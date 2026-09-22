@@ -5,6 +5,7 @@ import { openAppServer } from './app-server-client.mjs';
 import { prepareCacheTransport } from './cache-transport.mjs';
 import { freezeSnapshot, publicSnapshot, removeSnapshot, verifySnapshot } from './fork-snapshot.mjs';
 import { forkPrompt } from './prompts.mjs';
+import { ProbeOutputError } from './probe-output.mjs';
 import { BACKGROUND_STATE_LOCK, abandon, digest, interruptConfirmation, processAlive, readState, record, schedule, setCodexTaskName, withState } from './state.mjs';
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -117,7 +118,7 @@ export async function generateProbe(client, forkId, pending, isCancelled = async
     const response = await client.request('turn/start', { threadId: forkId, input: [{ type: 'text', text: forkPrompt(pending.language, pending.count) }] }, Math.max(1, Math.min(15000, pending.expiresAt - Date.now())));
     turnId = response.turn?.id;
     const text = await completed;
-    if (typeof text !== 'string') throw new Error('Probe did not return one final text answer');
+    if (typeof text !== 'string') throw new ProbeOutputError('missing_final_answer', 'Probe did not return one final text answer', { unphasedMessages: otherText.length });
     return { text, usage: usageByTurn.get(turnId) || null };
   } finally {
     clearTimeout(timeout); clearInterval(cancelCheck); client.listeners.delete(onMessage);
@@ -132,6 +133,7 @@ export async function runForkProbe(directory, session, challenge, env = process.
   const stateOptions = dependencies.background ? BACKGROUND_STATE_LOCK : undefined;
   const updateState = (callback) => withState(directory, session, callback, stateOptions);
   let client, cacheTransport, snapshot, pending, receipt, text, cleanupConfirmed = false;
+  let stage = 'connect';
   const claimed = await updateState((state) => {
     // Parallel background hooks race for one atomic checkpoint lease. A losing
     // contender must not report an error or cancel the winning worker's batch.
@@ -148,6 +150,7 @@ export async function runForkProbe(directory, session, challenge, env = process.
   if (!claimed) return { skipped: true };
   try {
     client = await connect(env);
+    stage = 'snapshot';
     if (!snapshot) {
       snapshot = await freezeSnapshot(client, session, directory);
       await updateState((state) => {
@@ -160,6 +163,7 @@ export async function runForkProbe(directory, session, challenge, env = process.
       });
     }
     await verifySnapshot(client, snapshot);
+    stage = 'fork_preparation';
     cacheTransport = await prepareCacheTransport(client, snapshot, env);
     const { response: fork, effective } = await prepareProbeFork(client, snapshot, cacheTransport);
     await enforceTrust(client, snapshot.cwd);
@@ -170,28 +174,32 @@ export async function runForkProbe(directory, session, challenge, env = process.
       state.forkSnapshot.effective = effective;
       state.forkHealth = { checkedAt: Date.now(), ready: true, boundary: 'persisted_rollout', toolsBlocked: true };
     });
+    stage = 'inference';
     const generated = await generate(client, fork.thread.id, pending, async () => {
       const state = await readState(directory, session);
       return !state?.enabled || state.taskHalt || state.pending?.id !== challenge || state.epoch !== pending.epoch;
     });
     text = generated.text;
+    stage = 'cleanup';
     await client.close(); await cacheTransport?.close(); cleanupConfirmed = true;
     receipt = { mode: 'ephemeral_fork', snapshot: publicSnapshot(snapshot), effective, cleanedUp: true, usage: generated.usage || null,
       cacheHit: generated.usage ? generated.usage.cachedInputTokens > 0 : null, routingScope: 'fork_continuation',
       cacheScope: cacheTransport?.mode || 'native_fork' };
+    stage = 'submission';
     const result = await dependencies.submit(directory, session, challenge, text, receipt, stateOptions);
     return result;
   } catch (error) {
+    const diagnostic = { stage, ...(error instanceof ProbeOutputError ? error.diagnostic : { code: 'probe_failed' }) };
     const cancelled = await updateState((state) => {
       if (!state.enabled || state.pending?.id !== challenge || state.epoch !== pending.epoch) return true;
       abandon(state, Date.now(), 'fork_probe_failed');
       interruptConfirmation(state, Date.now(), 'fork_probe_failed'); schedule(state, Date.now());
-      state.forkHealth = { ready: false, checkedAt: Date.now(), error: error.message };
-      record(state, 'fork_probe_failed', Date.now(), { challenge, reason: error.message });
+      state.forkHealth = { ready: false, checkedAt: Date.now(), error: error.message, diagnostic };
+      record(state, 'fork_probe_failed', Date.now(), { challenge, reason: error.message, diagnostic });
       return false;
     });
     if (cancelled) return { accepted: false, cancelled: true };
-    return { accepted: false, reason: error.message, agentAction: 'report_coverage_gap', instruction: 'Tell the user this fork checkpoint failed. Do not generate numbers in the main task or substitute a new API conversation.' };
+    return { accepted: false, reason: error.message, diagnostic, agentAction: 'report_coverage_gap', instruction: 'Tell the user this fork checkpoint failed. Do not generate numbers in the main task or substitute a new API conversation.' };
   } finally {
     try { if (client && !cleanupConfirmed) await client.close(); }
     finally {

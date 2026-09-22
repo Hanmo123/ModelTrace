@@ -128,7 +128,9 @@ function render(state) {
   txt('missed', state.missedProbes + (state.pendingExpired ? 1 : 0));
   txt('hook-note', state.hookObserved ? `最近工作 hook ${time(state.lastWorkHookAt)}` : state.hookState === 'idle' ? `暂无新工作工具 · 最近 ${date(state.lastWorkHookAt)}` : state.hookState === 'awaiting_background_hook' ? '已观察到工作工具，等待后台 hook 验证' : '等待当前运行中的工作工具验证 hooks');
   renderConfirmation(state); renderTrace(state); renderAlerts(state); renderHistory(state);
-  txt('fork-note', `${state.snapshot ? `冻结快照 ${state.snapshot.sha256?.slice(0, 12) || '等待确认'}…` : '当前无保留中的基准快照'}${state.forkCleanup ? ` · 最近清理：${({ pending: '待删除', deleted: '已删除', blocked: '需检查' })[state.forkCleanup.status] || state.forkCleanup.status}` : ''}${state.forkCleanup?.error ? ` · ${state.forkCleanup.error}` : ''}`);
+  const forkFailure = state.forkHealth?.ready === false && state.forkHealth.error ? state.forkHealth : null;
+  const failureNote = forkFailure ? ` · 检测未完成：${forkFailure.error}${forkFailure.diagnostic ? ` [${forkFailure.diagnostic.stage} / ${forkFailure.diagnostic.code}]` : ''}` : '';
+  txt('fork-note', `${state.snapshot ? `冻结快照 ${state.snapshot.sha256?.slice(0, 12) || '等待确认'}…` : '当前无保留中的基准快照'}${state.forkCleanup ? ` · 最近清理：${({ pending: '待删除', deleted: '已删除', blocked: '需检查' })[state.forkCleanup.status] || state.forkCleanup.status}` : ''}${state.forkCleanup?.error ? ` · ${state.forkCleanup.error}` : ''}${failureNote}`);
   const latest = state.samples.at(-1); $('weights').replaceChildren();
   txt('latest-language', latest ? languageNames[latest.language] || latest.language : '—');
   if (!latest) inlineEmpty($('latest'), '等待第一个有效样本');

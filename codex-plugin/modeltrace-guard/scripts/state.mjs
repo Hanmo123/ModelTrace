@@ -6,6 +6,7 @@ import { setTimeout as delay } from 'node:timers/promises';
 import { LANGUAGES } from './prompts.mjs';
 import { compactHistory } from './history.mjs';
 import { removeSnapshot } from './fork-snapshot.mjs';
+export { validateNumbers } from './probe-output.mjs';
 
 export const DEFAULTS = Object.freeze({
   mode: 'tools', toolMin: 16, toolMax: 32, retryCount: 3,
@@ -213,20 +214,6 @@ export function issue(state, now, draw = randomInt) {
   record(state, 'probe_issued', now, { challenge: state.pending.id, count: state.pending.count, language: state.pending.language });
   schedule(state, now, draw);
   return state.pending;
-}
-
-// Reject malformed samples before the inherited scorer's permissive parser can alter them.
-export function validateNumbers(text, expectedCount) {
-  if (typeof text !== 'string' || text.length > 5000 || !/^\s*\[\s*\d+(?:\s*,\s*\d+)*\s*\]\s*$/.test(text)) {
-    throw new Error('numbers must be a literal JSON array of integers, without prose or expressions');
-  }
-  const values = JSON.parse(text);
-  if (values.some((value) => !Number.isInteger(value) || value < 1 || value > 355)) throw new Error('Every number must be in 1..355');
-  // Natural model counting errors are retained, not manually repaired. Match the bank's lower cutoff.
-  if (values.length < Math.max(80, Math.ceil(expectedCount * 0.55)) || values.length > Math.ceil(expectedCount * 1.25)) {
-    throw new Error(`Sample length ${values.length} is outside the accepted bounds for ${expectedCount}`);
-  }
-  return values;
 }
 
 export function classifySample(result, expected, previous = []) {

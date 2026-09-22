@@ -7,6 +7,10 @@ description: Start, configure, inspect or stop background Codex model fingerprin
 
 Use `../../scripts/guard.mjs` relative to this skill directory; resolve its absolute path. Requires Node.js 18+ and a compatible local Codex app-server runtime. The runner uses Codex's configured account/provider. Generation consumes Codex inference usage; scoring uses the bundled offline ModelTrace bank.
 
+## Original task and sampling fork
+
+The management workflow below applies to the original monitored task. In a disposable sampling fork created by the bundled runner, the new input begins with `[ModelTrace Guard: disposable sampling fork]`. In that fork, directly answer the requested integer-array task once; do not start monitoring, run commands, continue the inherited `/goal`, or report monitoring status. The prohibition on generating probe numbers in the original task does not prohibit this runner-created sampling fork from generating its sample. Leave the original task's goal and messages unchanged.
+
 ## Enable and configure
 
 Only enable monitoring when the user asks for this task. Installation alone does not enable it. Use the real `CODEX_THREAD_ID`, or a trusted hook's actual session ID if unavailable; never invent a task ID. Preserve a user-defined task name. When a verified app task title is available, pass it to `start --name`; never use the shared workspace name as a task title. The background snapshot also captures the native task title without reading transcript contents. Do not derive a model identity from the classifier's prediction.
@@ -33,7 +37,7 @@ The runner creates one native, persisted baseline fork from the task's stored hi
 
 The baseline preserves Codex's persisted history, not unseen in-flight memory. A mid-turn fork can contain Codex's interruption marker. Probe arrays stay outside the parent task; its existing messages remain unchanged. Language variation and a fixed prefix do not guarantee an invisible test or a cache hit. Report returned cached-token counts when available; null means unavailable. A fork samples its own continuation, not proof of how an earlier parent request was routed.
 
-On a runner error, report the recorded coverage gap. Do not fabricate a result or fall back to in-context generation. At most one checkpoint runs per task. Probe failures, expiry, compaction, changed comparison conditions and interruptions do not count as mismatches.
+On a runner error, report the recorded coverage gap and the returned diagnostic code/stage when available. A queued follow-up is not a successful check. Do not fabricate a result or fall back to in-context generation. At most one checkpoint runs per task. Probe failures, expiry, compaction, changed comparison conditions and interruptions do not count as mismatches.
 
 ## Notify, retry, halt
 

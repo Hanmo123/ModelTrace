@@ -124,3 +124,18 @@ test('task selector distinguishes enabled monitoring from stopped historical rec
   assert.match(nodes.session.children[0].textContent, /^已停止 · 历史记录 · 合成交互测试/);
   assert.equal(nodes.runtime.textContent, '已停止监测');
 });
+
+test('dashboard shows a typed sampling failure separately from a model mismatch', async () => {
+  const { context, nodes, state } = await fixture();
+  state.status = 'coverage_gap'; state.confirmation = null;
+  state.mismatchAlerts = 0; state.missedProbes = 1;
+  state.forkHealth = { ready: false, error: 'Probe answer is not one valid JSON array', diagnostic: { stage: 'submission', code: 'invalid_json' } };
+  context.render(state);
+  assert.equal(nodes.runtime.textContent, '覆盖缺口');
+  assert.equal(nodes.mismatches.textContent, 0);
+  assert.equal(nodes.missed.textContent, 1);
+  assert.match(nodes['fork-note'].textContent, /检测未完成.*submission \/ invalid_json/);
+  state.forkHealth = { ready: true };
+  context.render(state);
+  assert.ok(!nodes['fork-note'].textContent.includes('invalid_json'));
+});

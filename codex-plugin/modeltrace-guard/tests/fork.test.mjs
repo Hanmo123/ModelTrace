@@ -11,6 +11,7 @@ import { runForkProbe, forkParameters, verifyFork, generateProbe, requireTrusted
 import { BACKGROUND_EVENTS, BACKGROUND_TIMEOUT_SECONDS, handleBackgroundHook, waitForConfirmation } from '../scripts/background.mjs';
 import { cleanSnapshot, cleanupPending, CLEANUP_SOURCE_KINDS } from '../scripts/fork-cleanup.mjs';
 import { cleanupPath, freezeSnapshot, snapshotBoundaries, sourceSettings } from '../scripts/fork-snapshot.mjs';
+import { FORK_ROLE_MARKER, forkPrompt } from '../scripts/prompts.mjs';
 
 // In-memory protocol double. No Codex process, provider, API or real task is
 // contacted; synthetic arrays test workflow invariants, never identification.
@@ -199,6 +200,79 @@ test('fork preparation preserves task goals and messages and uses runtime-compat
   for (const call of f.calls.filter(({ method }) => method === 'thread/fork')) assert.equal(call.params.deferGoalContinuation, call.params.ephemeral ? undefined : true);
 });
 
+test('a goal-mode sampling turn appends its fork role without replacing context, settings or parent goal', async (t) => {
+  const f = await fixture(t), goal = { objective: 'Continue original work', status: 'active', tokenBudget: 1000 };
+  f.threads.get(f.session).goal = structuredClone(goal);
+  const parentHistory = structuredClone(f.threads.get(f.session).history);
+  parentHistory[0].items.push({ type: 'agentMessage', text: 'Never generate probe numbers in the monitored task.' });
+  f.threads.get(f.session).history = structuredClone(parentHistory);
+  const pending = (await f.command('start', '--languages', 'en')).pending;
+  let turnStarted = false;
+  const connect = () => {
+    const client = f.connect(), request = client.request;
+    client.request = async (method, params) => {
+      if (method === 'turn/start') {
+        turnStarted = true;
+        const child = f.threads.get(params.threadId);
+        assert.equal(child.ephemeral, true);
+        assert.deepEqual(child.history, parentHistory);
+        assert.deepEqual(child.goal, goal);
+        // No model/effort, developer-instruction, output-schema or goal override.
+        assert.deepEqual(Object.keys(params).sort(), ['input', 'threadId']);
+        assert.deepEqual(params.input, [{ type: 'text', text: forkPrompt('en', pending.count) }]);
+        assert.ok(params.input[0].text.startsWith(FORK_ROLE_MARKER));
+        for (const listener of client.listeners) {
+          listener({ method: 'item/completed', params: { threadId: child.id, turnId: 'probe', item: { type: 'agentMessage', phase: 'final_answer', text: integers } } });
+          listener({ method: 'turn/completed', params: { threadId: child.id, turn: { id: 'probe', status: 'completed' } } });
+        }
+        return { turn: { id: 'probe' } };
+      }
+      if (method === 'turn/interrupt') return {};
+      return request(method, params);
+    };
+    return client;
+  };
+  const result = await runForkProbe(f.directory, f.session, pending.id, {}, { ...f.dependencies, connect, generate: generateProbe });
+  assert.equal(result.accepted, true, result.reason); assert.equal(turnStarted, true);
+  assert.deepEqual(f.threads.get(f.session).history, parentHistory);
+  assert.deepEqual(f.threads.get(f.session).goal, goal);
+  assert.ok(!f.calls.some(({ method }) => method.startsWith('thread/goal/')));
+});
+
+test('a fenced fork reply is scored unchanged and never leaks into the parent or public result', async (t) => {
+  const f = await fixture(t), pending = (await f.command('start')).pending;
+  const result = await runForkProbe(f.directory, f.session, pending.id, {}, { ...f.dependencies,
+    generate: async () => ({ text: '```json\n' + integers + '\n```' }),
+  });
+  assert.equal(result.accepted, true, result.reason);
+  const state = await readState(f.directory, f.session);
+  assert.deepEqual(state.samples[0].numbers, JSON.parse(integers));
+  assert.equal(state.missed, 0);
+  assert.ok(!JSON.stringify(result).includes(integers));
+  assert.deepEqual(f.threads.get(f.session).history, f.initialHistory);
+});
+
+test('invalid replies retain only typed diagnostics, count as gaps and never trigger mismatch retries', async (t) => {
+  const f = await fixture(t), pending = (await f.command('start')).pending;
+  const secret = 'sensitive original goal text';
+  const result = await runForkProbe(f.directory, f.session, pending.id, {}, { ...f.dependencies,
+    generate: async () => ({ text: '```json\n' + secret + integers + '\n```' }),
+  });
+  assert.equal(result.accepted, false); assert.equal(result.agentAction, 'report_coverage_gap');
+  assert.equal(result.diagnostic.code, 'invalid_json'); assert.equal(result.diagnostic.stage, 'submission');
+  assert.equal(result.diagnostic.format, 'code_fence');
+  const state = await readState(f.directory, f.session);
+  assert.equal(state.samples.length, 0); assert.equal(state.alerts.length, 0);
+  assert.equal(state.missed, 1); assert.equal(state.lastOutcome, 'coverage_gap');
+  assert.equal(state.confirmation, null); assert.equal(state.taskHalt, null);
+  assert.deepEqual(state.forkHealth.diagnostic, result.diagnostic);
+  assert.deepEqual(state.events.find((event) => event.type === 'fork_probe_failed').diagnostic, result.diagnostic);
+  assert.deepEqual(summarize(state, f.directory).forkHealth.diagnostic, result.diagnostic);
+  const exposed = JSON.stringify({ result, state });
+  assert.ok(!exposed.includes(secret)); assert.ok(!exposed.includes(integers));
+  assert.equal(state.forkSnapshot, null); assert.equal(state.probeRun, null);
+});
+
 test('workspace drift or incorrect fork ownership prevents inference', async (t) => {
   for (const variant of ['response-cwd', 'thread-cwd', 'wrong-parent', 'source-id', 'base-id']) {
     const f = await fixture(t), pending = (await f.command('start')).pending;
@@ -367,6 +441,23 @@ test('early completion notifications and observed cached tokens are retained; to
     else { const result = await action(); assert.equal(result.text, integers); assert.equal(result.usage.cachedInputTokens, 4000); }
     assert.equal(client.listeners.size, 0);
   }
+});
+
+test('missing final text reports an output diagnostic without exposing commentary', async () => {
+  const client = { listeners: new Set(), request: async (method) => {
+    if (method !== 'turn/start') return {};
+    for (const listener of client.listeners) {
+      listener({ method: 'item/completed', params: { threadId: 'fork', item: { type: 'agentMessage', phase: 'commentary', text: 'private commentary' } } });
+      listener({ method: 'turn/completed', params: { threadId: 'fork', turn: { id: 'probe', status: 'completed' } } });
+    }
+    return { turn: { id: 'probe' } };
+  } };
+  await assert.rejects(() => generateProbe(client, 'fork', { expiresAt: Date.now() + 5000, language: 'en', count: 300 }), (error) => {
+    assert.equal(error.diagnostic.code, 'missing_final_answer');
+    assert.ok(!JSON.stringify(error).includes('private commentary'));
+    return true;
+  });
+  assert.equal(client.listeners.size, 0);
 });
 
 test('token usage inherited from a previous turn is never reported as the probe cache hit', async () => {

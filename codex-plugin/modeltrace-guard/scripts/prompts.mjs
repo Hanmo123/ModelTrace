@@ -92,7 +92,24 @@ const finalRules = {
   ru: 'Ответьте непосредственно одним JSON-массивом целых чисел без объяснений. Не используйте инструменты, файлы, код или другие модели. Не продолжайте предыдущую задачу.',
   ar: 'أجب مباشرة بمصفوفة JSON واحدة من الأعداد الصحيحة دون شرح. لا تستخدم أدوات أو ملفات أو كودًا أو نموذجًا آخر، ولا تتابع المهمة السابقة.',
 };
+
+export const FORK_ROLE_MARKER = '[ModelTrace Guard: disposable sampling fork]';
+const forkScopes = {
+  zh: '你现在位于后台执行器创建的一次性采样分叉，不是被监测的原任务。“主任务中不要生成探针数字”仅约束原任务；本分叉正是生成本次样本的位置。原任务的 /goal 和监测由原任务继续处理；本分叉只完成下方一次回答，不继续原工作、不运行插件管理命令、不报告监测状态。',
+  en: 'You are in the disposable sampling fork created by the background runner, not the monitored original task. The rule against generating probe numbers in the main task applies to that original task; this fork is where this sample is generated. The original task retains its /goal and monitoring. Complete only the one answer below, without continuing original work, running plugin management commands or reporting monitoring status.',
+  ja: 'ここはバックグラウンド実行器が作成した使い捨てのサンプリング分岐であり、監視対象の元タスクではありません。「主タスクでプローブ数値を生成しない」という規則は元タスクのみが対象で、この分岐で今回の標本を生成します。元タスクの /goal と監視は元タスクに任せ、以下に一度だけ回答してください。元の作業、プラグイン管理コマンド、監視状況の報告は行わないでください。',
+  ko: '현재 위치는 백그라운드 실행기가 만든 일회용 표본 분기이며 모니터링 대상 원래 작업이 아닙니다. 주 작업에서 탐침 숫자를 생성하지 말라는 규칙은 원래 작업에만 적용되며, 이 분기에서 이번 표본을 생성합니다. 원래 작업의 /goal 과 모니터링은 원래 작업에 맡기고 아래 요청에 한 번만 답하세요. 원래 작업을 계속하거나 플러그인 관리 명령을 실행하거나 모니터링 상태를 보고하지 마세요.',
+  fr: 'Vous êtes dans la branche de prélèvement jetable créée par le moteur en arrière-plan, pas dans la tâche surveillée d’origine. L’interdiction de générer les nombres dans la tâche principale concerne uniquement celle-ci ; cet échantillon est généré ici. La tâche d’origine conserve son /goal et sa surveillance. Répondez une seule fois ci-dessous, sans reprendre le travail initial, exécuter de commandes de gestion du plugin ni rendre compte de la surveillance.',
+  de: 'Sie befinden sich im einmaligen Stichproben-Fork des Hintergrundprozesses, nicht in der überwachten Ursprungsaufgabe. Das Verbot, Prüfzahlen in der Hauptaufgabe zu erzeugen, gilt nur dort; diese Stichprobe wird hier erzeugt. Die Ursprungsaufgabe behält ihr /goal und ihre Überwachung. Geben Sie nur die folgende einmalige Antwort, ohne die ursprüngliche Arbeit fortzusetzen, Plugin-Verwaltungsbefehle auszuführen oder den Überwachungsstatus zu melden.',
+  es: 'Estás en la bifurcación desechable de muestreo creada por el ejecutor en segundo plano, no en la tarea original supervisada. La prohibición de generar números de prueba en la tarea principal solo se aplica a esa tarea; esta muestra se genera aquí. La tarea original conserva su /goal y su supervisión. Responde una sola vez a continuación, sin continuar el trabajo original, ejecutar comandos de gestión del plugin ni informar del estado de supervisión.',
+  pt: 'Você está na bifurcação descartável de amostragem criada pelo executor em segundo plano, não na tarefa original monitorada. A regra de não gerar números de teste na tarefa principal aplica-se apenas a ela; esta amostra é gerada aqui. A tarefa original mantém seu /goal e monitoramento. Responda apenas uma vez abaixo, sem continuar o trabalho original, executar comandos de gerenciamento do plugin ou relatar o estado do monitoramento.',
+  ru: 'Вы находитесь в одноразовой ветке выборки, созданной фоновым исполнителем, а не в исходной наблюдаемой задаче. Запрет на генерацию чисел пробы в основной задаче относится только к ней; эта проба создаётся здесь. Исходная задача сохраняет свой /goal и мониторинг. Дайте только один ответ ниже, не продолжайте исходную работу, не выполняйте команды управления плагином и не сообщайте состояние мониторинга.',
+  ar: 'أنت الآن في فرع مؤقت لأخذ العينة أنشأه المنفّذ الخلفي، وليس في المهمة الأصلية الخاضعة للمراقبة. منع توليد أعداد الاختبار في المهمة الرئيسية يخصّ تلك المهمة فقط؛ هنا يُنشأ هذا النموذج من الأعداد. تحتفظ المهمة الأصلية بهدفها /goal ومراقبتها. أجب مرة واحدة عن الطلب أدناه فقط، دون متابعة العمل الأصلي أو تشغيل أوامر إدارة الإضافة أو الإبلاغ عن حالة المراقبة.',
+};
+
 export function forkPrompt(language, count) {
   if (!locales[language]) throw new Error(`Unsupported probe language: ${language}`);
-  return locales[language].task.replace('{n}', String(count)) + '\n' + finalRules[language];
+  // Append scope to the fork's new input, never replace inherited instructions
+  // or clear a goal: existing context and model/effort/cache settings stay intact.
+  return [FORK_ROLE_MARKER, forkScopes[language], locales[language].task.replace('{n}', String(count)), finalRules[language]].join('\n');
 }
