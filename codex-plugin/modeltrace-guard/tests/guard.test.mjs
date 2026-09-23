@@ -295,7 +295,12 @@ test('start/submit/status/stop round trip stores only probe evidence, replay rej
   assert.equal(state.samples[0].numbers.length, 300);
   const stopped = await run(['stop', ...flags(dir)], {});
   assert.equal(stopped.enabled, false); assert.equal(stopped.probesAccepted, 1);
-  assert.deepEqual(await handleHook(event('PostToolUse'), dir), {});
+  const afterStop = await handleHook(event('PostToolUse'), dir);
+  if (state.alerts.some((alert) => !alert.acknowledgedAt)) {
+    assert.match(afterStop.hookSpecificOutput.additionalContext, /NOTIFY THE USER NOW/);
+  } else {
+    assert.deepEqual(afterStop, {});
+  }
 });
 
 test('invalid sample cannot become a compatible result or consume pending silently', async (t) => {

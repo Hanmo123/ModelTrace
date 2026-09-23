@@ -68,7 +68,7 @@ templates/          页面模板
 
 ## 指纹库说明
 
-项目中现有指纹库共包含两个模型家族、13 个模型：
+项目中现有指纹库共包含两个模型家族、16 个模型：
 
 ```
 gpt-5.4
@@ -77,6 +77,8 @@ gpt-5.6-luna
 gpt-5.6-terra
 gpt-5.6-sol
 gpt-6-astra
+gpt-6-sol
+gpt-6-luna
 claude-haiku-4-5-20251001
 claude-sonnet-4-6
 claude-sonnet-5
@@ -84,6 +86,7 @@ claude-opus-4-6
 claude-opus-4-7
 claude-opus-4-8
 claude-opus-5
+claude-opus-5-5
 ```
 
 GPT 采集自官方订阅 Codex，Claude 采集自 [OAIPro](https://api.oaipro.com/)。

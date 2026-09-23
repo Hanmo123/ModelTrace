@@ -1,6 +1,6 @@
 {
   "name": "modeltrace-guard",
-  "version": "0.1.4",
+  "version": "0.1.7",
   "description": "Background Codex model fingerprint monitoring with disposable forks of a frozen task snapshot.",
   "author": {
     "name": "xqy2006"
