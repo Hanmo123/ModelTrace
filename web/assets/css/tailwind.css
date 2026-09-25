@@ -6,48 +6,48 @@
 
 @layer base {
   :root {
-    --background: 240 20% 99%;
-    --foreground: 240 10% 4%;
+    --background: 220 16% 96.5%;
+    --foreground: 225 15% 8%;
     --card: 0 0% 100%;
-    --card-foreground: 240 10% 4%;
+    --card-foreground: 225 15% 8%;
     --popover: 0 0% 100%;
-    --popover-foreground: 240 10% 4%;
-    --primary: 262 83% 58%;
+    --popover-foreground: 225 15% 8%;
+    --primary: 225 15% 10%;
     --primary-foreground: 0 0% 100%;
-    --secondary: 240 5% 96%;
-    --secondary-foreground: 240 6% 10%;
-    --muted: 240 5% 96%;
-    --muted-foreground: 240 4% 46%;
-    --accent: 262 70% 96%;
-    --accent-foreground: 262 83% 40%;
-    --destructive: 0 84% 60%;
+    --secondary: 220 14% 93%;
+    --secondary-foreground: 225 12% 14%;
+    --muted: 220 14% 94%;
+    --muted-foreground: 225 8% 45%;
+    --accent: 220 14% 92%;
+    --accent-foreground: 225 12% 14%;
+    --destructive: 0 74% 51%;
     --destructive-foreground: 0 0% 98%;
-    --border: 240 6% 90%;
-    --input: 240 6% 90%;
-    --ring: 262 83% 58%;
-    --radius: 0.625rem;
+    --border: 220 12% 89%;
+    --input: 220 12% 88%;
+    --ring: 225 15% 10%;
+    --radius: 0.85rem;
   }
 
   .dark {
-    --background: 240 12% 5%;
-    --foreground: 0 0% 98%;
-    --card: 240 10% 8%;
-    --card-foreground: 0 0% 98%;
-    --popover: 240 10% 7%;
-    --popover-foreground: 0 0% 98%;
-    --primary: 263 85% 68%;
-    --primary-foreground: 262 90% 12%;
-    --secondary: 240 5% 15%;
-    --secondary-foreground: 0 0% 98%;
-    --muted: 240 5% 14%;
-    --muted-foreground: 240 5% 65%;
-    --accent: 262 40% 18%;
-    --accent-foreground: 263 85% 85%;
-    --destructive: 0 72% 51%;
+    --background: 225 18% 6%;
+    --foreground: 0 0% 97%;
+    --card: 225 13% 10%;
+    --card-foreground: 0 0% 97%;
+    --popover: 225 13% 9%;
+    --popover-foreground: 0 0% 97%;
+    --primary: 0 0% 96%;
+    --primary-foreground: 225 15% 10%;
+    --secondary: 225 10% 16%;
+    --secondary-foreground: 0 0% 97%;
+    --muted: 225 10% 15%;
+    --muted-foreground: 220 8% 62%;
+    --accent: 225 10% 16%;
+    --accent-foreground: 0 0% 97%;
+    --destructive: 0 65% 50%;
     --destructive-foreground: 0 0% 98%;
-    --border: 240 5% 17%;
-    --input: 240 5% 20%;
-    --ring: 263 85% 68%;
+    --border: 225 9% 18%;
+    --input: 225 9% 22%;
+    --ring: 0 0% 85%;
   }
 }
 
@@ -69,34 +69,7 @@
   }
 }
 
-/* 场景背景：顶部主色微光 + 点阵网格，底部渐隐 */
-.bg-scene {
-  position: fixed;
-  inset: 0;
-  z-index: -1;
-  pointer-events: none;
-  background:
-    radial-gradient(60rem 24rem at 50% -10%, hsl(var(--primary) / 0.09), transparent 70%),
-    radial-gradient(36rem 18rem at 85% 0%, hsl(220 90% 60% / 0.06), transparent 70%);
-}
-
-.bg-scene::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  background-image: radial-gradient(hsl(var(--foreground) / 0.07) 1px, transparent 1px);
-  background-size: 26px 26px;
-  mask-image: linear-gradient(to bottom, black 0%, transparent 65%);
-  -webkit-mask-image: linear-gradient(to bottom, black 0%, transparent 65%);
-}
-
-/* 品牌标识渐变 */
+/* 品牌标识：实心主色方块 */
 .brand-mark {
-  background: linear-gradient(135deg, hsl(262 83% 62%), hsl(230 90% 62%));
-  box-shadow: 0 4px 14px -2px hsl(262 83% 58% / 0.45);
-}
-
-/* 结果判定卡顶部渐变条 */
-.verdict-glow {
-  background: linear-gradient(90deg, hsl(262 83% 58%), hsl(200 90% 55%), hsl(160 80% 45%));
+  @apply bg-primary text-primary-foreground;
 }
