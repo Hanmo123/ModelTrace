@@ -1,5 +1,11 @@
+<script setup lang="ts">
+</script>
+
 <template>
-  <main class="container py-10">
-    <h1 class="text-2xl font-bold">ModelTrace</h1>
-  </main>
+  <div class="min-h-screen bg-background">
+    <AppHeader />
+    <main class="container py-8">
+      <ManualTest />
+    </main>
+  </div>
 </template>
