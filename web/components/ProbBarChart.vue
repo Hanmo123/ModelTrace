@@ -3,13 +3,13 @@ import type { ModelResult } from '@/lib/fingerprint'
 import { percent } from '@/lib/format'
 import { cn } from '@/lib/utils'
 
-const props = withDefaults(defineProps<{ results: ModelResult[]; limit?: number }>(), { limit: 12 })
+const props = withDefaults(defineProps<{ results: ModelResult[]; limit?: number }>(), { limit: 6 })
 
 const top = computed(() => props.results.slice(0, props.limit))
 const gridLines = [100, 75, 50, 25, 0]
 
 /** 缩短模型名用于横轴标签 */
-const shortName = (name: string) => name.replace(/^(gpt|claude)-/i, '')
+const shortName = (name: string) => name.replace(/^(gpt|claude)-/i, '').replace(/-\d{8}$/, '')
 /** 仅给头名与概率 >= 5% 的柱子标注数值，避免拥挤截断 */
 const labeled = (item: ModelResult, index: number) => index === 0 || item.probability >= 0.05
 </script>
@@ -36,7 +36,7 @@ const labeled = (item: ModelResult, index: number) => index === 0 || item.probab
           :style="{ bottom: `${line}%` }"
           aria-hidden="true"
         />
-        <div class="flex h-full items-end gap-1.5">
+        <div class="flex h-full items-end gap-2">
           <div
             v-for="(item, index) in top"
             :key="item.model"
@@ -62,18 +62,25 @@ const labeled = (item: ModelResult, index: number) => index === 0 || item.probab
       </div>
     </div>
 
-    <!-- 横轴标签 -->
+    <!-- 横轴标签：斜向下 60°，避免长名截断 -->
     <div class="flex gap-2">
       <div class="w-8 shrink-0" aria-hidden="true" />
-      <div class="flex min-w-0 flex-1 gap-1.5">
-        <span
+      <div class="flex h-14 min-w-0 flex-1 gap-2">
+        <div
           v-for="(item, index) in top"
           :key="item.model"
-          :class="cn(
-            'min-w-0 flex-1 truncate text-center text-[10px]',
-            index === 0 ? 'font-semibold text-foreground' : 'text-muted-foreground',
-          )"
-        >{{ shortName(item.display_name) }}</span>
+          class="relative min-w-0 flex-1"
+        >
+          <span
+            :class="
+              cn(
+                'absolute left-1/2 top-1 origin-top-left rotate-[60deg] whitespace-nowrap text-[10px]',
+                index === 0 ? 'font-semibold text-foreground' : 'text-muted-foreground',
+              )
+            "
+            >{{ shortName(item.display_name) }}</span
+          >
+        </div>
       </div>
     </div>
     <p v-if="results.length > limit" class="text-right text-[10px] text-muted-foreground">
