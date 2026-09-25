@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { MessagesSquare, Moon, PenLine, Sun, Zap } from "lucide-vue-next";
+import { Github, Moon, PenLine, Sun, Zap } from "lucide-vue-next";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
@@ -44,11 +44,11 @@ const { isDark, toggle } = useTheme();
           </Button>
           <Button variant="outline" size="icon" as-child>
             <a
-              href="https://linux.do/t/topic/1545335"
+              href="https://github.com/xqy2006/ModelTrace"
               target="_blank"
-              rel="noreferrer"
-              aria-label="LINUX DO"
-              ><MessagesSquare
+              rel="noopener noreferrer"
+              aria-label="GitHub 项目仓库"
+              ><Github
             /></a>
           </Button>
         </div>
