@@ -69,7 +69,6 @@ watch(
 
 function validate(): boolean {
   Object.keys(errors).forEach((key) => delete errors[key as keyof FormState])
-  if (!form.name.trim()) errors.name = '请填写预设名称'
   if (!form.baseUrl.trim()) errors.baseUrl = '请填写 Base URL'
   else if (!/^https?:\/\//.test(form.baseUrl.trim())) errors.baseUrl = 'Base URL 需以 http(s):// 开头'
   if (!form.apiKey.trim()) errors.apiKey = '请填写 API Key'
@@ -99,17 +98,16 @@ function submit() {
   <Dialog :open="open" @update:open="emit('update:open', $event)">
     <DialogContent class="sm:max-w-lg">
       <DialogHeader>
-        <DialogTitle>{{ preset ? '编辑预设' : '新增预设' }}</DialogTitle>
+        <DialogTitle>{{ preset ? '编辑服务商' : '添加服务商' }}</DialogTitle>
         <DialogDescription>
-          预设仅保存在当前浏览器的 localStorage 中，API Key 不会上传到任何服务器。
+          仅保存在当前浏览器的 localStorage 中，API Key 不会上传到任何服务器。
         </DialogDescription>
       </DialogHeader>
 
       <form class="flex flex-col gap-4" @submit.prevent="submit">
         <div class="flex flex-col gap-2">
-          <Label for="preset-name">名称</Label>
-          <Input id="preset-name" v-model="form.name" placeholder="例如：OpenAI 官方" :aria-invalid="!!errors.name" />
-          <p v-if="errors.name" class="text-sm text-destructive">{{ errors.name }}</p>
+          <Label for="preset-name">服务商名称（可选）</Label>
+          <Input id="preset-name" v-model="form.name" placeholder="留空则使用域名，例如 api.openai.com" />
         </div>
 
         <div class="flex flex-col gap-2">

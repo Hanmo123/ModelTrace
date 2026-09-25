@@ -20,6 +20,17 @@ interface PresetStorage {
 
 const STORAGE_KEY = 'modeltrace.presets.v1'
 
+/** 展示名：未填名称时回退为域名 */
+export function presetLabel(preset: Pick<EndpointPreset, 'name' | 'baseUrl'>): string {
+  const name = preset.name.trim()
+  if (name) return name
+  try {
+    return new URL(preset.baseUrl).hostname
+  } catch {
+    return preset.baseUrl
+  }
+}
+
 function readStorage(): EndpointPreset[] {
   try {
     const raw = localStorage.getItem(STORAGE_KEY)

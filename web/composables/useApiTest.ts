@@ -1,6 +1,6 @@
 import { createOpenAI } from '@ai-sdk/openai'
 import { generateText, type LanguageModel } from 'ai'
-import { generateChallenges } from '@/lib/challenge'
+import { generateChallenges, type Challenge } from '@/lib/challenge'
 import {
   analyzeGlobalOutputs,
   parseNumbers,
@@ -15,6 +15,8 @@ export type RunStatus = 'running' | 'success' | 'failed'
 export interface PresetRunState {
   status: RunStatus
   steps: StepState[]
+  /** 本轮使用的挑战（最多 6 条） */
+  challenges: Challenge[]
   validCount: number
   errors: string[]
   result: AnalysisResult | null
@@ -72,6 +74,7 @@ export function useApiTest() {
     const state: PresetRunState = {
       status: 'running',
       steps: challenges.map(() => 'pending'),
+      challenges,
       validCount: 0,
       errors: [],
       result: null,
