@@ -1,15 +1,5 @@
-<script setup lang="ts">
-import { Separator } from '@/components/ui/separator'
-</script>
-
 <template>
-  <main class="flex flex-col gap-10 py-8">
+  <main class="flex min-h-0 flex-1 flex-col p-4 lg:p-5">
     <ManualSection />
-    <div class="container max-w-[1400px]">
-      <Separator />
-    </div>
-    <div class="container max-w-[1400px]">
-      <ProvidersSection />
-    </div>
   </main>
 </template>

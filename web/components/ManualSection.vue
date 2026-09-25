@@ -1,30 +1,20 @@
 <script setup lang="ts">
-import { ClipboardCopy, Loader2, RefreshCw, ScanSearch, Sparkles } from 'lucide-vue-next'
-import { Badge } from '@/components/ui/badge'
+import { Copy, Loader2, RefreshCw, ScanSearch, Sparkles } from 'lucide-vue-next'
+import { toast } from 'vue-sonner'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent } from '@/components/ui/card'
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog'
+import { Progress } from '@/components/ui/progress'
 import { Textarea } from '@/components/ui/textarea'
 import { generateChallenges, type Challenge } from '@/lib/challenge'
 import { analyzeGlobalOutputs, parseNumbers, type AnalysisResult } from '@/lib/fingerprint'
 import { cn } from '@/lib/utils'
 
 const { bank, load: loadBank } = useBank()
-const { openConfig } = useProviderOnboarding()
 
 const challenges = ref<Challenge[]>([])
 const outputs = ref<string[]>([])
 const analyzing = ref(false)
 const errorMessage = ref('')
 const result = ref<AnalysisResult | null>(null)
-const copyHintOpen = ref(false)
 
 const minimums = computed(() =>
   challenges.value.map((challenge) => Math.max(80, Math.ceil(challenge.expected_count * 0.55))),
@@ -39,23 +29,19 @@ const allComplete = computed(
     challenges.value.length > 0 &&
     parsedCounts.value.every((count, index) => count >= (minimums.value[index] ?? 80)),
 )
-const hasResult = computed(() => result.value !== null)
 
 let autoTimer: ReturnType<typeof setTimeout> | undefined
-watch(
-  signature,
-  () => {
-    if (autoTimer) clearTimeout(autoTimer)
-    if (!allComplete.value) {
-      result.value = null
-      return
-    }
-    // 输入停顿 700ms 后自动计算，无需点击按钮
-    autoTimer = setTimeout(() => {
-      void compute()
-    }, 700)
-  },
-)
+watch(signature, () => {
+  if (autoTimer) clearTimeout(autoTimer)
+  if (!allComplete.value) {
+    result.value = null
+    return
+  }
+  // 输入停顿 700ms 后自动计算，无需点击按钮
+  autoTimer = setTimeout(() => {
+    void compute()
+  }, 700)
+})
 
 function regenerate() {
   challenges.value = generateChallenges(3)
@@ -67,10 +53,10 @@ function regenerate() {
 async function copyPrompt(prompt: string) {
   try {
     await navigator.clipboard.writeText(prompt)
+    toast.success('提示词已复制')
   } catch {
-    // 剪贴板不可用时仍展示引导
+    toast.error('复制失败，请手动选择文本复制')
   }
-  copyHintOpen.value = true
 }
 
 async function compute() {
@@ -94,125 +80,145 @@ async function compute() {
   }
 }
 
-function startConfigure() {
-  copyHintOpen.value = false
-  openConfig(true)
-}
-
-onMounted(async () => {
-  await loadBank()
-  if (bank.value) regenerate()
-})
+onMounted(loadBank)
+// 指纹库可能由 Header 先发起加载；就绪后再生成挑战，避免竞态
+watch(bank, (ready) => {
+  if (ready && !challenges.value.length) regenerate()
+}, { immediate: true })
 </script>
 
 <template>
+  <!-- 大框架：左 61.8% 题目区 / 右 38.2% 结果区 -->
   <div
-    :class="
-      cn(
-        'mx-auto w-full px-4 transition-[max-width] duration-500 ease-out sm:px-6',
-        hasResult ? 'max-w-[1400px]' : 'max-w-3xl',
-      )
-    "
+    class="flex min-h-0 flex-1 flex-col overflow-hidden rounded-2xl border bg-card lg:grid lg:grid-cols-[61.8fr_38.2fr] lg:grid-rows-[minmax(0,1fr)]"
   >
-    <div :class="cn('grid items-start gap-6', hasResult && 'xl:grid-cols-[minmax(0,1fr)_400px]')">
-      <!-- 三条挑战 -->
-      <div class="flex flex-col gap-4">
-        <Card
-          v-for="(challenge, index) in challenges"
-          :key="challenge.id"
-          class="rounded-2xl shadow-sm"
-        >
-          <CardContent class="flex flex-col gap-3 p-5">
-            <div class="flex items-center justify-between gap-2">
-              <div class="flex items-center gap-2.5">
-                <span
-                  class="brand-mark flex size-7 items-center justify-center rounded-lg text-xs font-bold"
-                >
-                  {{ index + 1 }}
-                </span>
-                <strong class="text-sm">挑战 {{ index + 1 }}</strong>
-                <Badge variant="secondary" class="tnum font-normal">
-                  {{ challenge.expected_count }} 个数字
-                </Badge>
-                <Badge
-                  v-if="parsedCounts[index]"
-                  variant="outline"
-                  :class="
-                    cn(
-                      'tnum font-normal',
-                      parsedCounts[index] >= minimums[index]
-                        ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400'
-                        : 'text-muted-foreground',
-                    )
-                  "
-                >
-                  已识别 {{ parsedCounts[index] }}/{{ minimums[index] }}
-                </Badge>
-              </div>
-              <Button variant="ghost" size="sm" @click="copyPrompt(challenge.prompt)">
-                <ClipboardCopy data-icon="inline-start" />
-                复制提示词
-              </Button>
-            </div>
-            <pre
-              class="max-h-28 overflow-auto whitespace-pre-wrap rounded-xl bg-muted/60 p-3 font-mono text-xs leading-relaxed text-muted-foreground"
-            >{{ challenge.prompt }}</pre>
-            <Textarea
-              v-model="outputs[index]"
-              spellcheck="false"
-              placeholder="把模型的完整输出粘贴到这里（保留文字、标点与完整数字序列）"
-              class="min-h-28 rounded-xl font-mono text-xs"
-            />
-          </CardContent>
-        </Card>
-
-        <!-- 底部操作行：按钮保留，但输入完成后会自动触发 -->
-        <div class="flex flex-wrap items-center justify-between gap-3 px-1">
-          <p class="flex items-center gap-1.5 text-xs text-muted-foreground">
-            <Sparkles class="size-3.5" />
-            {{ analyzing ? '正在本地计算…' : '三份输出满足长度后自动计算，无需点击' }}
-          </p>
-          <div class="flex items-center gap-2">
-            <Button variant="outline" :disabled="!bank" @click="regenerate">
-              <RefreshCw data-icon="inline-start" />
-              重新生成挑战
-            </Button>
-            <Button :disabled="!bank || analyzing || !allComplete" @click="compute">
-              <Loader2 v-if="analyzing" class="animate-spin" data-icon="inline-start" />
-              <ScanSearch v-else data-icon="inline-start" />
-              计算概率
-            </Button>
-          </div>
+    <!-- 左侧：三道题目，垂直均分高度，放不下时题目文本内部滚动 -->
+    <section class="flex min-h-0 flex-1 flex-col p-4 lg:border-r lg:p-5">
+      <div class="mb-3 flex shrink-0 items-center justify-between">
+        <div class="flex items-baseline gap-2">
+          <h1 class="text-sm font-semibold tracking-tight">数值挑战</h1>
+          <span class="text-xs text-muted-foreground">全部计算在浏览器本地完成</span>
         </div>
-
-        <p v-if="errorMessage" class="px-1 text-sm text-destructive">{{ errorMessage }}</p>
+        <Button variant="ghost" size="sm" :disabled="!bank" @click="regenerate">
+          <RefreshCw data-icon="inline-start" />
+          换一组
+        </Button>
       </div>
 
-      <!-- 右侧结果栏 -->
-      <Card v-if="result" class="rounded-2xl shadow-sm xl:sticky xl:top-24">
-        <CardContent class="p-6">
-          <ResultPanel :result="result" />
-        </CardContent>
-      </Card>
-    </div>
+      <div class="flex min-h-0 flex-1 flex-col gap-3">
+        <div
+          v-for="(challenge, index) in challenges"
+          :key="challenge.id"
+          class="group relative flex min-h-[240px] flex-1 flex-col rounded-xl border bg-muted/30 p-4 lg:min-h-0"
+        >
+          <!-- hover 浮现的复制按钮 -->
+          <button
+            type="button"
+            class="absolute right-3 top-3 z-10 inline-flex items-center gap-1 rounded-lg border bg-background px-2 py-1 text-xs text-muted-foreground opacity-0 shadow-sm transition-opacity hover:text-foreground focus-visible:opacity-100 group-hover:opacity-100"
+            @click="copyPrompt(challenge.prompt)"
+          >
+            <Copy class="size-3.5" />
+            复制
+          </button>
 
-    <!-- 复制后的引导弹窗 -->
-    <Dialog :open="copyHintOpen" @update:open="copyHintOpen = $event">
-      <DialogContent class="sm:max-w-md">
-        <DialogHeader>
-          <DialogTitle>提示词已复制</DialogTitle>
-          <DialogDescription class="leading-relaxed">
-            也可以直接填写 Endpoint 和 API Key，由页面自动发送挑战并完成归因——更方便，也便于后续批量测试多个服务商。
-          </DialogDescription>
-        </DialogHeader>
-        <DialogFooter class="gap-2 sm:justify-between">
-          <Button variant="ghost" @click="copyHintOpen = false">我不需要</Button>
-          <Button @click="startConfigure">
-            <Sparkles data-icon="inline-start" />
-            开始配置
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+          <div class="mb-2 flex shrink-0 items-center gap-2 text-[11px] text-muted-foreground">
+            <span class="font-semibold text-foreground/70">题目 {{ index + 1 }}</span>
+            <span aria-hidden="true">·</span>
+            <span class="tnum">{{ challenge.expected_count }} 个数字</span>
+            <template v-if="parsedCounts[index]">
+              <span aria-hidden="true">·</span>
+              <span
+                :class="
+                  cn(
+                    'tnum',
+                    parsedCounts[index] >= minimums[index]
+                      ? 'text-emerald-600 dark:text-emerald-400'
+                      : '',
+                  )
+                "
+              >
+                已识别 {{ parsedCounts[index] }}/{{ minimums[index] }}
+              </span>
+            </template>
+          </div>
+
+          <!-- 纯文本题目：13 号灰色、无装饰 -->
+          <div class="min-h-0 flex-1 overflow-y-auto pr-1">
+            <p class="text-[13px] leading-relaxed text-muted-foreground">{{ challenge.prompt }}</p>
+          </div>
+
+          <Textarea
+            v-model="outputs[index]"
+            spellcheck="false"
+            placeholder="把模型的完整回答粘贴到这里"
+            class="mt-3 h-16 shrink-0 resize-none rounded-lg bg-background font-mono text-xs"
+          />
+        </div>
+      </div>
+
+      <div class="mt-3 flex shrink-0 items-center justify-between gap-3 border-t pt-3">
+        <p class="flex items-center gap-1.5 text-xs text-muted-foreground">
+          <Sparkles class="size-3.5" />
+          {{ analyzing ? '正在本地计算…' : '三份回答满足长度后自动计算，无需点击' }}
+        </p>
+        <Button size="sm" :disabled="!bank || analyzing || !allComplete" @click="compute">
+          <Loader2 v-if="analyzing" class="animate-spin" data-icon="inline-start" />
+          计算概率
+        </Button>
+      </div>
+      <p v-if="errorMessage" class="mt-2 shrink-0 text-xs text-destructive">{{ errorMessage }}</p>
+    </section>
+
+    <!-- 右侧：结果区 -->
+    <aside class="flex min-h-0 flex-col overflow-y-auto bg-muted/20 p-4 lg:p-6">
+      <template v-if="result">
+        <ResultPanel :result="result" />
+      </template>
+
+      <template v-else>
+        <div class="flex min-h-[360px] flex-1 flex-col">
+          <div class="flex flex-1 flex-col items-center justify-center gap-3 py-10 text-center">
+            <span
+              class="flex size-12 items-center justify-center rounded-full border bg-background text-muted-foreground"
+            >
+              <ScanSearch class="size-5" />
+            </span>
+            <div class="flex flex-col gap-1">
+              <p class="text-sm font-medium">等待三份回答</p>
+              <p class="max-w-[260px] text-xs leading-relaxed text-muted-foreground">
+                把模型的完整输出粘贴到左侧输入框，满足长度后自动开始归因分析
+              </p>
+            </div>
+          </div>
+
+          <!-- 实时解析进度 -->
+          <div class="flex shrink-0 flex-col gap-2.5 border-t pt-4">
+            <div
+              v-for="(challenge, index) in challenges"
+              :key="challenge.id"
+              class="flex items-center gap-3"
+            >
+              <span class="w-12 shrink-0 text-xs text-muted-foreground">回答 {{ index + 1 }}</span>
+              <Progress
+                :model-value="Math.min((parsedCounts[index] / minimums[index]) * 100, 100)"
+                class="h-1 flex-1"
+              />
+              <span
+                :class="
+                  cn(
+                    'tnum w-16 shrink-0 text-right text-[11px]',
+                    parsedCounts[index] >= minimums[index]
+                      ? 'text-emerald-600 dark:text-emerald-400'
+                      : 'text-muted-foreground',
+                  )
+                "
+              >
+                {{ parsedCounts[index] }}/{{ minimums[index] }}
+              </span>
+            </div>
+          </div>
+        </div>
+      </template>
+    </aside>
   </div>
 </template>
