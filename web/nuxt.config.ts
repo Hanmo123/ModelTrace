@@ -7,6 +7,7 @@ export default defineNuxtConfig({
   modules: ["@nuxtjs/tailwindcss", "shadcn-nuxt"],
   css: ["~/assets/css/tailwind.css"],
   app: {
+    baseURL: process.env.NUXT_APP_BASE_URL || '/',
     head: {
       htmlAttrs: { lang: "zh-CN" },
       title: "ModelTrace",

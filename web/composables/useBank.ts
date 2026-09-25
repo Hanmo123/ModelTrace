@@ -16,7 +16,8 @@ export function useBank() {
     loading.value = true
     error.value = null
     try {
-      bank.value = await $fetch<UnifiedBank>('/data/unified_bank.json', { cache: 'no-cache' })
+      const base = useRuntimeConfig().app.baseURL.replace(/\/?$/, '/')
+      bank.value = await $fetch<UnifiedBank>(`${base}data/unified_bank.json`, { cache: 'no-cache' })
     } catch (err) {
       error.value = err instanceof Error ? err.message : '指纹库加载失败'
     } finally {
