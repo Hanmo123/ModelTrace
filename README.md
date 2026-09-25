@@ -39,7 +39,7 @@ npm run generate # 纯静态产物 .output/public，可部署到任意静态托�
 
 ```bash
 cp worker/wrangler.toml.example worker/wrangler.toml
-# 编辑 SITE_ORIGIN（前端部署域名，不含路径）和 ALLOWED_HOSTS（允许访问的上游域名列表）。
+# 编辑 SITE_ORIGIN（前端部署域名，不含路径）。上游服务商无需预先配置。
 # 需 Cloudflare 账户；RATE_LIMITER 必须绑定，未绑定会拒绝全部请求。
 npx wrangler deploy --config worker/wrangler.toml
 # 获得 Worker URL 后，构建静态站点时指定（URL 必须以 /v1 结尾）：
@@ -47,7 +47,7 @@ cd web
 NUXT_PUBLIC_PROXY_URL=https://<你的-worker>.workers.dev/v1 npm run generate
 ```
 
-Worker 只代理 `/v1/chat/completions`、`/v1/responses` 的单条非流式数值挑战，限制请求/响应体积、输出长度、HTTPS 上游域名白名单和每 IP 请求频率，拒绝重定向、未知路径与附加工具参数。**仅检查 OpenAI 协议格式不足以安全地开放“任意目标网站”反向代理**，因此上游必须由运营者显式列入 `ALLOWED_HOSTS`；不支持 `*`。上线前仍应在 Cloudflare 设置 WAF/每日预算并评估滥用风险。未配置 `NUXT_PUBLIC_PROXY_URL` 时，界面不会声称存在已部署的代理，只提供终端备用通道。
+Worker 不要求配置上游域名白名单，可访问任意公网 HTTPS OpenAI-compatible Endpoint（API 根路径必须以 `/v1` 结尾）。它只代理 `/v1/chat/completions`、`/v1/responses` 的单条非流式 ModelTrace 数值挑战，限制请求/响应体积、输出长度和每 IP 请求频率，并拒绝 IP 字面量、常见本地域名、重定向、未知路径与附加工具参数。移除上游白名单会扩大滥用与 SSRF 风险；域名仍可能通过 DNS 指向特殊地址，因此上线前应配置 Cloudflare WAF、每日预算/告警和更严格的账户级限流。未配置 `NUXT_PUBLIC_PROXY_URL` 时，界面不会声称存在已部署的代理，只提供终端备用通道。
 
 ### 自动测试回归检查
 

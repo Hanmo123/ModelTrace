@@ -1,7 +1,38 @@
-// Optional, self-hosted Cloudflare Worker relay. NEVER deploy with an empty allowlist.
-// Only accepts a single non-streaming OpenAI-compatible prompt; not a generic URL proxy.
+// Optional, self-hosted Cloudflare Worker relay.
+// Accepts arbitrary public HTTPS OpenAI-compatible endpoints, but only for a tightly
+// constrained, single non-streaming ModelTrace challenge. It is not a generic URL proxy.
 const MAX_BODY = 12_000;
 const MAX_RESPONSE = 1_000_000;
+
+function forbiddenHost(hostname) {
+  const host = hostname.toLowerCase().replace(/^\[|\]$/g, "");
+  if (!/^[a-z0-9-]+(?:\.[a-z0-9-]+)+$/i.test(host)) return true;
+  if (/^\d{1,3}(?:\.\d{1,3}){3}$/.test(host) || host.includes(":")) return true;
+  const suffixes = [
+    "localhost",
+    ".localhost",
+    ".local",
+    ".internal",
+    ".lan",
+    ".home",
+    ".corp",
+    ".test",
+    ".invalid",
+    ".example",
+    ".arpa",
+    ".onion",
+  ];
+  if (suffixes.some((suffix) => host === suffix || host.endsWith(suffix)))
+    return true;
+  return [
+    "nip.io",
+    "sslip.io",
+    "xip.io",
+    "localtest.me",
+    "lvh.me",
+    "traefik.me",
+  ].some((domain) => host === domain || host.endsWith(`.${domain}`));
+}
 
 function reply(message, status, headers) {
   return new Response(JSON.stringify({ error: { message } }), {
@@ -39,9 +70,8 @@ async function readLimited(stream, limit) {
 export default {
   async fetch(request, env) {
     const origin = request.headers.get("Origin");
-    // Origin is not authentication: enforce a mandatory allowlist AND Cloudflare rate-limiter.
-    if (!env.SITE_ORIGIN || !env.ALLOWED_HOSTS || !env.RATE_LIMITER)
-      return reply("代理未配置", 503);
+    // Origin is not authentication; mandatory per-IP rate limiting remains required.
+    if (!env.SITE_ORIGIN || !env.RATE_LIMITER) return reply("代理未配置", 503);
     if (origin !== env.SITE_ORIGIN) return reply("不允许的页面来源", 403);
     const cors = {
       "Access-Control-Allow-Origin": env.SITE_ORIGIN,
@@ -67,22 +97,17 @@ export default {
     let base;
     try {
       base = new URL(request.headers.get("X-ModelTrace-Endpoint") || "");
-      const allow = env.ALLOWED_HOSTS.split(",")
-        .map((host) => host.trim().toLowerCase())
-        .filter(Boolean);
       if (
         base.protocol !== "https:" ||
-        !allow.includes(base.hostname.toLowerCase()) ||
+        forbiddenHost(base.hostname) ||
         base.port ||
         base.username ||
         base.password ||
         base.search ||
         base.hash ||
-        !/^\/(?:[a-z0-9_-]+\/)*v1\/?$/i.test(base.pathname) ||
-        !/^[a-z0-9-]+(?:\.[a-z0-9-]+)+$/i.test(base.hostname) ||
-        /\.(?:local|internal|localhost|test|invalid)$/i.test(base.hostname)
+        !/^\/(?:[a-z0-9_-]+\/)*v1\/?$/i.test(base.pathname)
       ) {
-        return reply("服务商地址不在代理允许范围", 403, cors);
+        return reply("服务商地址不是允许的公网 HTTPS API 根地址", 403, cors);
       }
     } catch {
       return reply("无效的服务商地址", 400, cors);

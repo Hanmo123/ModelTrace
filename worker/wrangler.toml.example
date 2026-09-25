@@ -6,8 +6,8 @@ workers_dev = true
 [vars]
 # Must match the deployed web origin exactly (no trailing slash or path).
 SITE_ORIGIN = "https://xqy2006.github.io"
-# Explicit upstream allowlist: NEVER replace with '*' or enable arbitrary hosts.
-ALLOWED_HOSTS = "linlong.tech,api.openai.com"
+# Upstream hosts are not configured here: the Worker accepts arbitrary public HTTPS
+# OpenAI-compatible endpoints ending in /v1, while rejecting IP literals/local names.
 
 # Mandatory per-IP rate limiting. Worker refuses requests when the binding is absent.
 [[unsafe.bindings]]

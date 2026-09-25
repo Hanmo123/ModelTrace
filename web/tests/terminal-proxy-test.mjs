@@ -85,7 +85,6 @@ try {
 
 const env = {
   SITE_ORIGIN: "https://app.example",
-  ALLOWED_HOSTS: "api.example",
   RATE_LIMITER: { limit: async () => ({ success: true }) },
 };
 const prompt = "请直接输出 300 个 1 到 355 的整数，不要解释";
@@ -95,7 +94,7 @@ const mk = (body, headers = {}, path = "/v1/chat/completions") =>
     headers: {
       Origin: "https://app.example",
       Authorization: "Bearer test-secret",
-      "X-ModelTrace-Endpoint": "https://api.example/v1",
+      "X-ModelTrace-Endpoint": "https://api.vendor.com/v1",
       "Content-Type": "application/json",
       "CF-Connecting-IP": "203.0.113.7",
       ...headers,
@@ -120,7 +119,7 @@ try {
   const ok = await worker.fetch(mk(chatBody), env);
   assert.equal(ok.status, 200);
   assert.equal(ok.headers.get("access-control-allow-origin"), env.SITE_ORIGIN);
-  assert.equal(called.url, "https://api.example/v1/chat/completions");
+  assert.equal(called.url, "https://api.vendor.com/v1/chat/completions");
   assert.equal(called.opts.headers.Authorization, "Bearer test-secret");
   assert.equal(JSON.parse(called.opts.body).max_tokens, 4096);
   assert.equal(
@@ -142,7 +141,7 @@ try {
     ).status,
     200,
   );
-  assert.equal(called.url, "https://api.example/v1/responses");
+  assert.equal(called.url, "https://api.vendor.com/v1/responses");
   assert.equal(
     (await worker.fetch(mk(chatBody, { Origin: "https://evil.example" }), env))
       .status,
@@ -180,7 +179,17 @@ try {
     429,
   );
   assert.equal(
-    (await worker.fetch(mk(chatBody), { ...env, ALLOWED_HOSTS: "" })).status,
+    (
+      await worker.fetch(
+        mk(chatBody, { "X-ModelTrace-Endpoint": "https://127.0.0.1/v1" }),
+        env,
+      )
+    ).status,
+    403,
+  );
+  assert.equal(
+    (await worker.fetch(mk(chatBody), { ...env, RATE_LIMITER: undefined }))
+      .status,
     503,
   );
 } finally {
