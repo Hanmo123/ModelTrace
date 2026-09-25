@@ -62,25 +62,21 @@ const labeled = (item: ModelResult, index: number) => index === 0 || item.probab
       </div>
     </div>
 
-    <!-- 横轴标签：斜向下 60°，避免长名截断 -->
+    <!-- 横轴标签 -->
     <div class="flex gap-2">
       <div class="w-8 shrink-0" aria-hidden="true" />
-      <div class="flex h-14 min-w-0 flex-1 gap-2">
-        <div
+      <div class="flex min-w-0 flex-1 gap-2">
+        <span
           v-for="(item, index) in top"
           :key="item.model"
-          class="relative min-w-0 flex-1"
+          :class="
+            cn(
+              'min-w-0 flex-1 truncate text-center text-[10px]',
+              index === 0 ? 'font-semibold text-foreground' : 'text-muted-foreground',
+            )
+          "
+          >{{ shortName(item.display_name) }}</span
         >
-          <span
-            :class="
-              cn(
-                'absolute left-1/2 top-1 origin-top-left rotate-[60deg] whitespace-nowrap text-[10px]',
-                index === 0 ? 'font-semibold text-foreground' : 'text-muted-foreground',
-              )
-            "
-            >{{ shortName(item.display_name) }}</span
-          >
-        </div>
       </div>
     </div>
     <p v-if="results.length > limit" class="text-right text-[10px] text-muted-foreground">
