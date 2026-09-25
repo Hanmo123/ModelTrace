@@ -115,20 +115,17 @@ const labels: Record<StepState, string> = {
       >
     </Alert>
 
-    <template v-if="run?.result">
-      <p
-        v-if="run.status === 'running'"
-        class="px-1 text-xs text-muted-foreground"
-      >
-        已有初步结果，后续有效回答返回后会自动更新。
-      </p>
-      <ResultPanel :result="run.result" />
-    </template>
-    <template v-else-if="terminal?.result">
+    <template v-if="terminal?.result">
       <p class="px-1 text-xs text-muted-foreground">
         终端 curl 回答 · 有效 {{ terminal.result.used_outputs }}/3
       </p>
       <ResultPanel :result="terminal.result" />
+    </template>
+    <template v-else-if="run?.result">
+      <p v-if="run.status === 'running'" class="px-1 text-xs text-muted-foreground">
+        已有初步结果，后续有效回答返回后会自动更新。
+      </p>
+      <ResultPanel :result="run.result" />
     </template>
     <Empty v-else-if="!run" class="min-h-60 rounded-md border">
       <EmptyHeader>
@@ -143,7 +140,7 @@ const labels: Record<StepState, string> = {
     </Empty>
 
     <section v-if="run" aria-label="挑战与模型回答" class="flex flex-col gap-3">
-      <h3 class="px-1 text-sm font-semibold">挑战与模型回答</h3>
+      <h3 class="px-1 text-sm font-semibold">{{ terminal?.result ? '浏览器直连尝试' : '挑战与模型回答' }}</h3>
       <details
         v-for="(challenge, index) in run.challenges"
         :key="challenge.id"

@@ -86,6 +86,7 @@ async function consentProxy() {
   proxyOpen.value = false;
   if (!preset || !proxyBaseURL) return;
   try {
+    clearTerminal(preset.id);
     const state = await runPreset(preset, proxyBaseURL);
     if (state.status === "failed")
       toast.error("代理请求失败；可以使用终端方式");
@@ -153,6 +154,7 @@ async function test(preset: EndpointPreset) {
   if (!bank.value || locked(preset.id)) return;
   selectedId.value = preset.id;
   try {
+    clearTerminal(preset.id);
     const state = await runPreset(preset);
     if (isNetworkFailure(preset.id)) {
       if (proxyBaseURL) askProxy(preset);
@@ -171,6 +173,7 @@ async function testAll() {
   if (!targets.length) return;
   selectedId.value = targets[0]!.id;
   try {
+    targets.forEach((preset) => clearTerminal(preset.id));
     await runBatch(targets);
     const success = targets.filter(
       (preset) => runStates.value[preset.id]?.status === "success",
@@ -299,13 +302,13 @@ async function testAll() {
               class="flex flex-wrap items-baseline gap-2 text-sm"
             >
               <strong class="uppercase">{{
-                (runStates[preset.id]?.result ||
-                  terminalSessions[preset.id]?.result)!.prediction_name
+                (terminalSessions[preset.id]?.result ||
+                  runStates[preset.id]?.result)!.prediction_name
               }}</strong>
               <span class="tnum">{{
                 percent(
-                  (runStates[preset.id]?.result ||
-                    terminalSessions[preset.id]?.result)!.probability,
+                  (terminalSessions[preset.id]?.result ||
+                    runStates[preset.id]?.result)!.probability,
                 )
               }}</span>
               <span
