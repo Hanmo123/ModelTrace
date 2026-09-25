@@ -265,6 +265,14 @@ try {
     await page.$eval('[aria-label="服务商测试详情"]', (el) => el.textContent),
     /Invalid API key/,
   );
+  await clickText('终端方式');
+  await page.waitForSelector('[role=dialog] textarea[aria-label="挑战 1 终端输出"]');
+  assert(!await page.$eval('[role=dialog]', (el) => [...el.querySelectorAll('pre')].some((pre) => pre.textContent.includes('sk-test-bad-key'))));
+  await fill('[role=dialog] textarea[aria-label="挑战 1 终端输出"]', JSON.stringify({choices:[{message:{content:numbers}}]}));
+  await page.waitForFunction(() => document.querySelector('[role=dialog]')?.textContent.includes('当前结果：'));
+  await page.keyboard.press('Escape');
+  await page.waitForFunction(() => !document.querySelector('[role=dialog]'));
+  assert.match(await page.$eval('[aria-label="服务商测试详情"]', (el) => el.textContent), /终端 curl 回答/);
   await clickText("Invalid output", "article strong");
   assert.match(
     await page.$eval('[aria-label="服务商测试详情"]', (el) => el.textContent),

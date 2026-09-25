@@ -7,3 +7,5 @@ node_modules/
 .nuxt/
 .output/
 *.tsbuildinfo
+worker/wrangler.toml
+worker/.wrangler/

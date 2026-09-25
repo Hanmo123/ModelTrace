@@ -9,6 +9,8 @@
     "generate": "nuxt generate",
     "preview": "nuxt preview",
     "test:auto": "node tests/auto-test.mjs",
+    "test:terminal": "node tests/terminal-proxy-test.mjs",
+    "test:proxy": "node tests/proxy-consent-test.mjs",
     "postinstall": "nuxt prepare"
   },
   "dependencies": {

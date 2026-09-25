@@ -13,7 +13,7 @@ python start.py
 
 ## Nuxt 3 新版前端（web/）
 
-`web/` 是基于 Nuxt 3（纯 SPA，`ssr: false`）+ Tailwind CSS + shadcn-vue 重新设计的前端，完全在浏览器本地运行，不依赖任何后端：
+`web/` 是基于 Nuxt 3（纯 SPA，`ssr: false`）+ Tailwind CSS + shadcn-vue 重新设计的前端；默认在浏览器本地运行，不依赖后端。另有用户明确同意后才启用的可选 Cloudflare Worker 代理：
 
 - **API 自动检测**：基于 [AI SDK](https://ai-sdk.dev/)（`ai` + `@ai-sdk/openai`），浏览器直连目标 Endpoint，默认使用 OpenAI **Chat Completions**，也可在配置中选择 **Responses API**。每组最多尝试 6 条独立挑战，以收集 3 份有效回答为目标；第一份有效回答返回后即展示初步归因，后续回答自动更新结果。
 - **多服务商管理**：名称、Endpoint、API Key、模型 ID 四项必填，支持新增、编辑、删除。左侧为服务商列表，右侧 61.8% 展示选中服务商的进度、每题提示词与原始回答、错误信息及前 6 名匹配分布。支持单个测试和一键测全部（批量并发 2），某个服务商失败不会阻塞其他任务。
@@ -28,7 +28,26 @@ npm run build    # 产出 .output（node .output/server/index.mjs 预览）
 npm run generate # 纯静态产物 .output/public，可部署到任意静态托管
 ```
 
-> 注意：Endpoint 填 API 根地址（例如 `https://api.openai.com/v1`），不要包含 `/chat/completions` 或 `/responses`。浏览器直连要求目标允许跨域（CORS）；HTTPS 页面一般无法请求普通 HTTP 端点。测试会消耗对应服务商的 API 额度。每次请求超时 180 秒，SDK 最多重试 1 次；401/403 鉴权错误会直接结束该服务商的本轮测试。
+> 注意：Endpoint 填 API 根地址（例如 `https://api.openai.com/v1`），不要包含 `/chat/completions` 或 `/responses`。浏览器直连要求目标允许跨域（CORS）；HTTPS 页面一般无法请求普通 HTTP 端点。测试会消耗对应服务商的 API 额度。每次请求超时 180 秒，SDK 最多重试 1 次；401/403 鉴权错误或网络错误会提前结束该服务商的本轮测试。
+
+### 浏览器直连失败时
+
+- **终端 curl（无需中转）**：自动测试详情点「终端方式」，按 Linux/macOS、PowerShell、CMD（先进入 PowerShell）复制命令。当前终端会话先隐式输入 API Key；密钥不嵌入命令或 shell 历史（但运行期间可能短暂出现在 `curl` 进程参数中）。命令在终端直连所填 Endpoint，默认从 Chat/Responses JSON 中提取回答（Linux/macOS 需 Python 3）；也可选原始 JSON 模式（仅需 curl），粘贴回页面由浏览器解析。输出会尝试写入系统剪贴板，失败时仍在终端打印。任意一份达到阈值即在本地显示概率；终端请求需要用户手动执行，不能批量自动运行。
+- **可选 Cloudflare Worker**：仓库 `worker/` 提供 *自行部署的* 受限代理。当浏览器直连出现网络/CORS 错误，且部署时配置了代理 URL，页面会先弹窗告知密钥、模型 ID、挑战文本将经过 Worker；**用户明确同意后才会转发**。拒绝后打开终端模式。批量失败不自动同意代理，用户可在单个服务商详情中决定。代理不保存 API Key，但运营 Worker 的账户能接触经过它的密钥。
+
+#### 部署可选 Worker
+
+```bash
+cp worker/wrangler.toml.example worker/wrangler.toml
+# 编辑 SITE_ORIGIN（前端部署域名，不含路径）和 ALLOWED_HOSTS（允许访问的上游域名列表）。
+# 需 Cloudflare 账户；RATE_LIMITER 必须绑定，未绑定会拒绝全部请求。
+npx wrangler deploy --config worker/wrangler.toml
+# 获得 Worker URL 后，构建静态站点时指定（URL 必须以 /v1 结尾）：
+cd web
+NUXT_PUBLIC_PROXY_URL=https://<你的-worker>.workers.dev/v1 npm run generate
+```
+
+Worker 只代理 `/v1/chat/completions`、`/v1/responses` 的单条非流式数值挑战，限制请求/响应体积、输出长度、HTTPS 上游域名白名单和每 IP 请求频率，拒绝重定向、未知路径与附加工具参数。**仅检查 OpenAI 协议格式不足以安全地开放“任意目标网站”反向代理**，因此上游必须由运营者显式列入 `ALLOWED_HOSTS`；不支持 `*`。上线前仍应在 Cloudflare 设置 WAF/每日预算并评估滥用风险。未配置 `NUXT_PUBLIC_PROXY_URL` 时，界面不会声称存在已部署的代理，只提供终端备用通道。
 
 ### 自动测试回归检查
 
@@ -38,6 +57,10 @@ npm run generate # 纯静态产物 .output/public，可部署到任意静态托�
 cd web
 npm run build
 CHROME_PATH=/usr/bin/google-chrome npm run test:auto
+npm run test:terminal # 终端命令 + Worker 边界测试，使用本地 mock，不需真实密钥
+# 可选：检查代理同意/拒绝流程（测试脚本使用本地 3244、3245 端口）：
+NUXT_PUBLIC_PROXY_URL=http://127.0.0.1:3244/v1 npm run build
+npm run test:proxy
 ```
 
 覆盖四项必填/URL 校验、增删改与 localStorage 恢复、Chat/Responses SDK 请求、首份回答出结果、批量并发/排队、鉴权失败/数字不足、Tab 切换保留状态与移动端横向溢出检查。
