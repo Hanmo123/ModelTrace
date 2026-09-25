@@ -32,8 +32,8 @@ npm run generate # 纯静态产物 .output/public，可部署到任意静态托�
 
 ### 浏览器直连失败时
 
-- **终端 curl（无需中转）**：自动测试详情点「终端方式」，按 Linux/macOS、PowerShell、CMD（先进入 PowerShell）复制命令。当前终端会话先隐式输入 API Key；密钥不嵌入命令或 shell 历史（但运行期间可能短暂出现在 `curl` 进程参数中）。命令在终端直连所填 Endpoint，默认从 Chat/Responses JSON 中提取回答（Linux/macOS 需 Python 3）；也可选原始 JSON 模式（仅需 curl），粘贴回页面由浏览器解析。输出会尝试写入系统剪贴板，失败时仍在终端打印。任意一份达到阈值即在本地显示概率；终端请求需要用户手动执行，不能批量自动运行。
-- **可选 Cloudflare Worker**：仓库 `worker/` 提供 *自行部署的* 受限代理。当浏览器直连出现网络/CORS 错误，且部署时配置了代理 URL，页面会先弹窗告知密钥、模型 ID、挑战文本将经过 Worker；**用户明确同意后才会转发**。拒绝后打开终端模式。批量失败不自动同意代理，用户可在单个服务商详情中决定。代理不保存 API Key，但运营 Worker 的账户能接触经过它的密钥。
+- **终端 curl（暂时隐藏）**：终端命令生成与粘贴归因的实现仍保留，但当前前端不显示入口，也不会在直连失败或拒绝代理时弹出终端操作。日后可重新启用。终端请求不会由浏览器自动执行。
+- **可选 Cloudflare Worker**：仓库 `worker/` 提供 *自行部署的* 受限代理。当浏览器直连出现网络/CORS 错误，且部署时配置了代理 URL，页面会先弹窗告知密钥、模型 ID、挑战文本将经过 Worker；**用户明确同意后才会转发**。拒绝后保留失败详情，不再弹出终端模式。批量失败不自动同意代理，用户可在单个服务商详情中决定。代理不保存 API Key，但运营 Worker 的账户能接触经过它的密钥。
 
 #### 部署可选 Worker
 
@@ -47,7 +47,7 @@ cd web
 NUXT_PUBLIC_PROXY_URL=https://<你的-worker>.workers.dev/v1 npm run generate
 ```
 
-Worker 不要求配置上游域名白名单，可访问任意公网 HTTPS OpenAI-compatible Endpoint（API 根路径必须以 `/v1` 结尾）。它只代理 `/v1/chat/completions`、`/v1/responses` 的单条非流式 ModelTrace 数值挑战，限制请求/响应体积、输出长度和每 IP 请求频率，并拒绝 IP 字面量、常见本地域名、重定向、未知路径与附加工具参数。移除上游白名单会扩大滥用与 SSRF 风险；域名仍可能通过 DNS 指向特殊地址，因此上线前应配置 Cloudflare WAF、每日预算/告警和更严格的账户级限流。未配置 `NUXT_PUBLIC_PROXY_URL` 时，界面不会声称存在已部署的代理，只提供终端备用通道。
+Worker 不要求配置上游域名白名单，可访问任意公网 HTTPS OpenAI-compatible Endpoint（API 根路径必须以 `/v1` 结尾）。它只代理 `/v1/chat/completions`、`/v1/responses` 的单条非流式 ModelTrace 数值挑战，限制请求/响应体积、输出长度和每 IP 请求频率，并拒绝 IP 字面量、常见本地域名、重定向、未知路径与附加工具参数。移除上游白名单会扩大滥用与 SSRF 风险；域名仍可能通过 DNS 指向特殊地址，因此上线前应配置 Cloudflare WAF、每日预算/告警和更严格的账户级限流。未配置 `NUXT_PUBLIC_PROXY_URL` 时，直连失败会显示错误详情，不会展示代理或终端入口。
 
 ### 自动测试回归检查
 

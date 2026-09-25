@@ -19,6 +19,7 @@ defineProps<{
   preset: EndpointPreset;
   run?: PresetRunState;
   terminal?: TerminalSession;
+  terminalAvailable: boolean;
   proxyAvailable: boolean;
   queued: boolean;
   disabled: boolean;
@@ -64,7 +65,12 @@ const labels: Record<StepState, string> = {
           @click="$emit('proxy')"
           >通过代理测试</Button
         >
-        <Button size="sm" variant="outline" @click="$emit('terminal')">
+        <Button
+          v-if="terminalAvailable"
+          size="sm"
+          variant="outline"
+          @click="$emit('terminal')"
+        >
           <Terminal data-icon="inline-start" />终端方式
         </Button>
         <Button size="sm" :disabled="disabled" @click="$emit('test')">
@@ -110,8 +116,11 @@ const labels: Record<StepState, string> = {
     >
       <AlertDescription
         >{{ run.message }} 请检查 Endpoint、密钥、模型 ID
-        和跨域配置；若浏览器跨域被阻止，可用「终端方式」复制 curl
-        命令并粘贴回答。</AlertDescription
+        和跨域配置；若浏览器跨域被阻止，{{
+          proxyAvailable
+            ? "可在确认信任代理后选择「通过代理测试」。"
+            : "请检查服务商的 CORS 配置。"
+        }}</AlertDescription
       >
     </Alert>
 
@@ -122,7 +131,10 @@ const labels: Record<StepState, string> = {
       <ResultPanel :result="terminal.result" />
     </template>
     <template v-else-if="run?.result">
-      <p v-if="run.status === 'running'" class="px-1 text-xs text-muted-foreground">
+      <p
+        v-if="run.status === 'running'"
+        class="px-1 text-xs text-muted-foreground"
+      >
         已有初步结果，后续有效回答返回后会自动更新。
       </p>
       <ResultPanel :result="run.result" />
@@ -140,7 +152,9 @@ const labels: Record<StepState, string> = {
     </Empty>
 
     <section v-if="run" aria-label="挑战与模型回答" class="flex flex-col gap-3">
-      <h3 class="px-1 text-sm font-semibold">{{ terminal?.result ? '浏览器直连尝试' : '挑战与模型回答' }}</h3>
+      <h3 class="px-1 text-sm font-semibold">
+        {{ terminal?.result ? "浏览器直连尝试" : "挑战与模型回答" }}
+      </h3>
       <details
         v-for="(challenge, index) in run.challenges"
         :key="challenge.id"

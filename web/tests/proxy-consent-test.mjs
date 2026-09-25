@@ -111,13 +111,21 @@ try {
   await click("开始测试");
   await page.waitForSelector("[role=alertdialog]", { timeout: 30000 });
   assert.equal(proxyCalls, 0, "Must not proxy before consent");
-  await click("不使用代理，改用终端");
-  await page.waitForSelector(
-    '[role=dialog] textarea[aria-label="挑战 1 终端输出"]',
+  await click("不使用代理");
+  await page.waitForFunction(
+    () => !document.querySelector("[role=alertdialog]"),
   );
   assert.equal(proxyCalls, 0, "Declining must not proxy");
-  await page.keyboard.press("Escape");
-  await delay(350);
+  assert.equal((await page.$$("[role=dialog]")).length, 0);
+  assert.equal(
+    await page.$$eval(
+      "button",
+      (buttons) =>
+        buttons.filter((button) => button.textContent.includes("终端方式"))
+          .length,
+    ),
+    0,
+  );
   await click("通过代理测试");
   await page.waitForSelector("[role=alertdialog]");
   await click("同意并通过代理测试");
@@ -129,7 +137,9 @@ try {
     { timeout: 30000 },
   );
   assert.equal(proxyCalls, 3);
-  console.log("PASS proxy opt-in/decline/terminal and explicit consent");
+  console.log(
+    "PASS proxy opt-in/decline without terminal and explicit consent",
+  );
 } finally {
   await browser?.close();
   server.kill();
