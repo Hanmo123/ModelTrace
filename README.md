@@ -15,9 +15,10 @@ python start.py
 
 `web/` 是基于 Nuxt 3（纯 SPA，`ssr: false`）+ Tailwind CSS + shadcn-vue 重新设计的前端，完全在浏览器本地运行，不依赖任何后端：
 
-- **API 自动检测**：基于 [AI SDK](https://ai-sdk.dev/)（`ai` + `@ai-sdk/openai`），浏览器直连目标 Endpoint，支持 OpenAI **Chat Completions** 与 **Responses API** 两种协议；每组自动发送最多 6 次挑战、凑齐 3 份有效回答后本地归因。
-- **Endpoint 预设**：可保存多组 Base URL + API Key + 模型组合（含可选温度），支持单组一键测试与一键批量测试（并发 2），全部仅存储在浏览器 localStorage（带版本 schema），API Key 不会离开浏览器。
-- **手动检测**：复制三条挑战发送给待测模型，粘贴输出后在浏览器本地完成归因。
+- **API 自动检测**：基于 [AI SDK](https://ai-sdk.dev/)（`ai` + `@ai-sdk/openai`），浏览器直连目标 Endpoint，默认使用 OpenAI **Chat Completions**，也可在配置中选择 **Responses API**。每组最多尝试 6 条独立挑战，以收集 3 份有效回答为目标；第一份有效回答返回后即展示初步归因，后续回答自动更新结果。
+- **多服务商管理**：名称、Endpoint、API Key、模型 ID 四项必填，支持新增、编辑、删除。左侧为服务商列表，右侧 61.8% 展示选中服务商的进度、每题提示词与原始回答、错误信息及前 6 名匹配分布。支持单个测试和一键测全部（批量并发 2），某个服务商失败不会阻塞其他任务。
+- **本地保存**：配置仅保存在当前浏览器的 localStorage（带版本 schema），刷新后恢复；测试结果仅保留在本次页面会话中。API Key 以明文保存在 localStorage，测试时只发送给用户配置的 Endpoint，无后端中转，请勿在共享设备上保存敏感密钥。
+- **手动检测**：复制挑战发送给待测模型，任意一份回答达到长度阈值即在浏览器本地自动计算；继续填写其他回答后自动更新结果。切换手动/自动 Tab 不会清空输入或中断正在运行的自动测试。
 
 ```bash
 cd web
@@ -27,7 +28,19 @@ npm run build    # 产出 .output（node .output/server/index.mjs 预览）
 npm run generate # 纯静态产物 .output/public，可部署到任意静态托管
 ```
 
-> 注意：浏览器直连要求目标 Endpoint 允许跨域（CORS）。
+> 注意：Endpoint 填 API 根地址（例如 `https://api.openai.com/v1`），不要包含 `/chat/completions` 或 `/responses`。浏览器直连要求目标允许跨域（CORS）；HTTPS 页面一般无法请求普通 HTTP 端点。测试会消耗对应服务商的 API 额度。每次请求超时 180 秒，SDK 最多重试 1 次；401/403 鉴权错误会直接结束该服务商的本轮测试。
+
+### 自动测试回归检查
+
+安装依赖后，需要本机 Chrome/Chromium。测试使用本地 mock API，不访问真实付费端点；mock 仅用于测试，不属于产品后端。
+
+```bash
+cd web
+npm run build
+CHROME_PATH=/usr/bin/google-chrome npm run test:auto
+```
+
+覆盖四项必填/URL 校验、增删改与 localStorage 恢复、Chat/Responses SDK 请求、首份回答出结果、批量并发/排队、鉴权失败/数字不足、Tab 切换保留状态与移动端横向溢出检查。
 
 ## GitHub Pages
 
