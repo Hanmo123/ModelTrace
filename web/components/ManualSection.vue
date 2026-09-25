@@ -1,15 +1,8 @@
 <script setup lang="ts">
 import {
   Copy,
-  Loader2,
-  MessagesSquare,
-  Moon,
-  PenLine,
   RefreshCw,
   ScanSearch,
-  Sparkles,
-  Sun,
-  Zap,
 } from "lucide-vue-next";
 import { toast } from "vue-sonner";
 import { Button } from "@/components/ui/button";
@@ -23,7 +16,6 @@ import {
 } from "@/lib/fingerprint";
 import { cn } from "@/lib/utils";
 
-const { isDark, toggle } = useTheme();
 const { bank, modelCount, fingerprintCount, load: loadBank } = useBank();
 
 const challenges = ref<Challenge[]>([]);
@@ -119,49 +111,6 @@ watch(
 
 <template>
   <div class="flex min-h-0 flex-1 flex-col">
-    <!-- 最顶部（大框架之外）：胶囊式切换 + 圆形操作钮 -->
-    <div class="flex shrink-0 items-center justify-between gap-3">
-      <nav class="flex items-center gap-3" aria-label="测试模式">
-        <button
-          type="button"
-          class="inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-2 text-sm font-medium text-primary-foreground shadow-sm"
-        >
-          <PenLine class="size-4 stroke-[1.5px]" />
-          手动测试
-        </button>
-        <button
-          type="button"
-          disabled
-          title="即将推出"
-          class="inline-flex cursor-not-allowed items-center gap-1.5 rounded-md border bg-[#e5e5e5] px-3 py-2 text-sm"
-        >
-          <Zap class="size-4 stroke-[1.5px]" />
-          自动测试
-        </button>
-      </nav>
-      <div class="flex items-center gap-2">
-        <Button
-          variant="outline"
-          size="icon"
-          aria-label="切换主题"
-          @click="toggle"
-        >
-          <Sun v-if="isDark" class="size-4" />
-          <Moon v-else class="size-4" />
-        </Button>
-        <Button variant="outline" size="icon" as-child>
-          <a
-            href="https://linux.do/t/topic/1545335"
-            target="_blank"
-            rel="noreferrer"
-            aria-label="LINUX DO"
-          >
-            <MessagesSquare class="size-4" />
-          </a>
-        </Button>
-      </div>
-    </div>
-
     <!-- 白色大框架：左 61.8% 题目 / 右 38.2% 结果 -->
     <div
       class="mt-3 flex min-h-0 flex-1 flex-col gap-2 overflow-hidden rounded-md bg-card p-3 lg:mt-4 lg:p-4"

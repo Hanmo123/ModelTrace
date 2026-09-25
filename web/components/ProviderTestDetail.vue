@@ -1,0 +1,171 @@
+<script setup lang="ts">
+import { Loader2, Play, ScanSearch } from "lucide-vue-next";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import {
+  Empty,
+  EmptyDescription,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
+} from "@/components/ui/empty";
+import { Progress } from "@/components/ui/progress";
+import { presetLabel, type EndpointPreset } from "@/composables/usePresets";
+import type { PresetRunState, StepState } from "@/composables/useApiTest";
+
+defineProps<{
+  preset: EndpointPreset;
+  run?: PresetRunState;
+  queued: boolean;
+  disabled: boolean;
+}>();
+defineEmits<{ test: [] }>();
+const labels: Record<StepState, string> = {
+  pending: "等待",
+  working: "请求中",
+  done: "有效",
+  invalid: "数字不足",
+  error: "请求失败",
+  skipped: "未调用",
+};
+</script>
+
+<template>
+  <div class="flex flex-col gap-4">
+    <div
+      class="flex flex-wrap items-start justify-between gap-3 rounded-md border p-3.5"
+    >
+      <div class="flex min-w-0 flex-col gap-1.5">
+        <h2 class="break-all text-sm font-semibold">
+          {{ presetLabel(preset) }}
+        </h2>
+        <p class="break-all text-xs text-muted-foreground">
+          {{ preset.baseUrl }}
+        </p>
+        <p class="break-all text-xs text-muted-foreground">
+          模型 ID：{{ preset.model }} ·
+          {{
+            preset.apiType === "responses"
+              ? "Responses API"
+              : "Chat Completions"
+          }}
+          · 密钥已配置
+        </p>
+      </div>
+      <Button size="sm" :disabled="disabled" @click="$emit('test')">
+        <Loader2
+          v-if="run?.status === 'running'"
+          class="animate-spin"
+          data-icon="inline-start"
+        />
+        <Play v-else data-icon="inline-start" />
+        {{
+          queued
+            ? "排队中"
+            : run?.status === "running"
+              ? "测试中…"
+              : run
+                ? "重新测试"
+                : "开始测试"
+        }}
+      </Button>
+    </div>
+
+    <div v-if="run || queued" class="flex flex-col gap-2 px-1">
+      <p class="text-xs text-muted-foreground" role="status" aria-live="polite">
+        {{ queued ? "已加入批量测试队列，等待空闲任务位…" : run?.message }}
+      </p>
+      <div v-if="run" class="flex items-center gap-3">
+        <Progress
+          :model-value="(run.validCount / 3) * 100"
+          class="h-1.5 flex-1"
+        />
+        <span class="tnum shrink-0 text-xs text-muted-foreground"
+          >有效回答 {{ run.validCount }}/3</span
+        >
+      </div>
+      <p v-if="run?.finishedAt" class="tnum text-xs text-muted-foreground">
+        本轮耗时 {{ ((run.finishedAt - run.startedAt) / 1000).toFixed(1) }} 秒
+      </p>
+    </div>
+    <Alert v-if="run?.status === 'failed' && !queued" variant="destructive">
+      <AlertDescription
+        >{{ run.message }} 请检查 Endpoint、密钥、模型 ID
+        和跨域配置。</AlertDescription
+      >
+    </Alert>
+
+    <template v-if="run?.result">
+      <p
+        v-if="run.status === 'running'"
+        class="px-1 text-xs text-muted-foreground"
+      >
+        已有初步结果，后续有效回答返回后会自动更新。
+      </p>
+      <ResultPanel :result="run.result" />
+    </template>
+    <Empty v-else-if="!run" class="min-h-60 rounded-md border">
+      <EmptyHeader>
+        <EmptyMedia variant="icon"><ScanSearch /></EmptyMedia>
+        <EmptyTitle>{{ queued ? "等待开始" : "准备开始测试" }}</EmptyTitle>
+        <EmptyDescription
+          >使用 AI SDK
+          直连此服务商。第一份有效回答返回后即可展示初步归因，随后继续收集最多 3
+          份有效回答。</EmptyDescription
+        >
+      </EmptyHeader>
+    </Empty>
+
+    <section v-if="run" aria-label="挑战与模型回答" class="flex flex-col gap-3">
+      <h3 class="px-1 text-sm font-semibold">挑战与模型回答</h3>
+      <details
+        v-for="(challenge, index) in run.challenges"
+        :key="challenge.id"
+        class="rounded-md border p-3.5"
+        :open="run.steps[index] === 'working' || run.steps[index] === 'error'"
+      >
+        <summary class="cursor-pointer text-xs">
+          <span class="ml-1 inline-flex flex-wrap items-center gap-2">
+            <strong>挑战 {{ index + 1 }}</strong>
+            <Badge
+              :variant="
+                run.steps[index] === 'error' ? 'destructive' : 'secondary'
+              "
+              class="font-normal"
+            >
+              {{ labels[run.steps[index]!] }}
+            </Badge>
+            <span class="tnum text-muted-foreground">
+              期望 {{ challenge.expected_count }} 个数字 · 已识别
+              {{ run.parsedCounts[index] }}
+            </span>
+          </span>
+        </summary>
+        <p class="mt-3 text-[13px] leading-relaxed text-muted-foreground">
+          {{ challenge.prompt }}
+        </p>
+        <div class="mt-3 flex flex-col gap-2">
+          <span class="text-xs font-medium">模型回答</span>
+          <pre
+            v-if="run.outputs[index]"
+            class="max-h-56 overflow-auto whitespace-pre-wrap break-words rounded-sm border bg-muted/40 p-3 font-mono text-xs leading-relaxed"
+            >{{ run.outputs[index] }}</pre>
+          <p v-else class="text-xs text-muted-foreground">
+            {{
+              run.steps[index] === "working"
+                ? "请求中，等待模型返回完整回答…"
+                : "暂无回答"
+            }}
+          </p>
+          <p
+            v-if="run.stepErrors[index]"
+            class="break-words text-xs text-destructive"
+          >
+            {{ run.stepErrors[index] }}
+          </p>
+        </div>
+      </details>
+    </section>
+  </div>
+</template>
