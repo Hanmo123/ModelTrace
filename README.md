@@ -1,5 +1,7 @@
 # ModelTrace
 
+开源仓库：[Hanmo123/ModelTrace](https://github.com/Hanmo123/ModelTrace)。本项目基于 [xqy2006/ModelTrace](https://github.com/xqy2006/ModelTrace) 继续开发，保留原项目的 MIT 许可证及版权声明；新版增加了 Nuxt 纯静态前端、多服务商测试、可选 Worker 代理及 Nginx 发布包。
+
 ModelTrace 是一个本地运行的主动模型归因工具。它通过三条独立的长整数生成挑战提取输出指纹，在统一候选库中自动判断模型家族和具体版本。
 
 ## 运行
@@ -12,6 +14,8 @@ python start.py
 页面地址为 `http://127.0.0.1:7860/`。
 
 ## Nuxt 3 新版前端（web/）
+
+> 自行部署时，建议创建自己的 Worker，并替换 `.github/workflows/pages.yml` 或打包环境变量中的 `NUXT_PUBLIC_PROXY_URL`，不要将仓库示例中的个人 Worker 当作公共代理服务。不要提交真实 API Key 或本地 Worker 配置。
 
 `web/` 是基于 Nuxt 3（纯 SPA，`ssr: false`）+ Tailwind CSS + shadcn-vue 重新设计的前端；默认在浏览器本地运行，不依赖后端。另有用户明确同意后才启用的可选 Cloudflare Worker 代理：
 
@@ -82,7 +86,9 @@ npm run test:static
 
 `static/index.html` 仍保留为旧版手动测试页面。GitHub Actions 的 `.github/workflows/pages.yml` 现已改为将 Nuxt 前端 `web/.output/public` 部署到 GitHub Pages；构建时设置 `NUXT_APP_BASE_URL=/ModelTrace/` 和 `NUXT_PUBLIC_PROXY_URL=https://llm-iq-proxy.hanmo5888.workers.dev/v1`。指纹库加载路径会跟随 baseURL。工作流在 `main` 分支推送或手动触发时生效。
 
-**部署前需同步 Worker 来源**：目前部署在 `llm-iq-proxy.hanmo5888.workers.dev` 的 Worker 只允许 `http://localhost:3002`（预检为 204），而正式页面 `https://xqy2006.github.io/ModelTrace/` 的 Origin 是 `https://xqy2006.github.io`（目前预检为 403）。先在本地 `worker/wrangler.toml` 把 `SITE_ORIGIN` 改为 `https://xqy2006.github.io`，然后重新执行 `npx wrangler@latest deploy --config worker/wrangler.toml`；若只在本地测试，则应保持 `SITE_ORIGIN=http://localhost:3002` 并用这个主机名和端口打开页面。Worker 当前只支持一个来源；无需配置上游域名白名单。
+本仓库的 Pages 地址为 `https://hanmo123.github.io/ModelTrace/`；需在 GitHub 仓库 Settings → Pages 中将部署来源设为 **GitHub Actions**。
+
+**部署前需同步 Worker 来源**：Pages 的 Origin 是 `https://hanmo123.github.io`，不包含 `/ModelTrace/`。先在本地 `worker/wrangler.toml` 把 `SITE_ORIGIN` 改为该 Origin，再执行 `npx wrangler@latest deploy --config worker/wrangler.toml`。如通过 Nginx 部署，则填实际站点 Origin；仅本地测试时可用 `http://localhost:3002`。静态页面部署不会自动修改 Worker 来源，配置不匹配会返回 403。Worker 当前只支持一个来源；无需配置上游域名白名单。
 
 ## 使用
 

@@ -39,6 +39,7 @@ try {
   });
   cpSync(join(root, "deploy/nginx/nginx.conf"), join(bundle, "nginx.conf"));
   cpSync(join(root, "deploy/nginx/README.md"), join(bundle, "README.md"));
+  cpSync(join(root, "LICENSE"), join(bundle, "LICENSE"));
   writeFileSync(
     join(bundle, "build-info.json"),
     JSON.stringify(

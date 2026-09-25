@@ -1,5 +1,7 @@
 # ModelTrace 纯静态 Nginx 部署包
 
+源码：[Hanmo123/ModelTrace](https://github.com/Hanmo123/ModelTrace)。基于 [xqy2006/ModelTrace](https://github.com/xqy2006/ModelTrace) 继续开发，遵循包内 `LICENSE` 的 MIT 许可证，保留原作者版权声明。
+
 本包不需要 Node.js、Python 或应用后端。Nginx 只提供 `site/` 中的 HTML、JS、CSS 和指纹库；归因计算在浏览器中完成。可选 Worker 负责转发模型请求，不由 Nginx 代理。
 
 ## 部署

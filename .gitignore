@@ -3,6 +3,9 @@ __pycache__/
 *.pyc
 *.log
 .venv/
+.env
+.env.*
+!.env.example
 node_modules/
 .nuxt/
 .output/

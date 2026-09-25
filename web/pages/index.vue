@@ -44,7 +44,7 @@ const { isDark, toggle } = useTheme();
           </Button>
           <Button variant="outline" size="icon" as-child>
             <a
-              href="https://github.com/xqy2006/ModelTrace"
+              href="https://github.com/Hanmo123/ModelTrace"
               target="_blank"
               rel="noopener noreferrer"
               aria-label="GitHub 项目仓库"
