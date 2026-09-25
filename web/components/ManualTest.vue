@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ClipboardCopy, RefreshCw, ScanSearch } from 'lucide-vue-next'
+import { ClipboardCopy, Loader2, RefreshCw, ScanSearch } from 'lucide-vue-next'
 import { toast } from 'vue-sonner'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
@@ -42,14 +42,13 @@ async function analyze() {
   // 让出一帧渲染加载态，再做同步重计算
   await new Promise((resolve) => requestAnimationFrame(resolve))
   try {
-    const analysis = analyzeGlobalOutputs(
+    result.value = analyzeGlobalOutputs(
       challenges.value.map((challenge, index) => ({
         text: outputs.value[index] || '',
         expected_count: challenge.expected_count,
       })),
       bank.value,
     )
-    result.value = analysis
   } catch (error) {
     errorMessage.value = error instanceof Error ? error.message : '无法完成归因。'
   } finally {
@@ -67,14 +66,14 @@ onMounted(async () => {
   <div class="flex flex-col gap-6">
     <Card>
       <CardHeader>
-        <div class="flex items-center justify-between">
+        <div class="flex flex-wrap items-center justify-between gap-4">
           <div>
             <CardTitle>手动检测</CardTitle>
             <CardDescription>
               复制三条挑战发送给同一个待测模型，再粘贴每次的完整输出，归因计算全部在浏览器本地完成。
             </CardDescription>
           </div>
-          <Button variant="outline" :disabled="!bank" @click="regenerate">
+          <Button variant="outline" class="shrink-0" :disabled="!bank" @click="regenerate">
             <RefreshCw data-icon="inline-start" />
             重新生成挑战
           </Button>
@@ -84,12 +83,19 @@ onMounted(async () => {
         <div
           v-for="(challenge, index) in challenges"
           :key="challenge.id"
-          class="flex flex-col gap-3 rounded-lg border p-4"
+          class="flex flex-col gap-4 rounded-xl border bg-card p-5 transition-colors hover:border-primary/30"
         >
           <div class="flex items-center justify-between">
-            <div class="flex items-center gap-2">
+            <div class="flex items-center gap-3">
+              <span
+                class="brand-mark flex size-7 items-center justify-center rounded-lg text-xs font-bold text-white"
+              >
+                {{ index + 1 }}
+              </span>
               <strong class="text-sm">挑战 {{ index + 1 }}</strong>
-              <Badge variant="secondary">{{ challenge.expected_count }} 个数字</Badge>
+              <Badge variant="secondary" class="tnum font-normal">
+                {{ challenge.expected_count }} 个数字
+              </Badge>
             </div>
             <Button variant="ghost" size="sm" @click="copyPrompt(challenge.prompt)">
               <ClipboardCopy data-icon="inline-start" />
@@ -98,13 +104,13 @@ onMounted(async () => {
           </div>
           <div class="grid gap-4 md:grid-cols-2">
             <div class="flex flex-col gap-2">
-              <Label>发送给待测模型</Label>
+              <Label class="text-muted-foreground">发送给待测模型</Label>
               <pre
-                class="whitespace-pre-wrap rounded-md bg-muted p-3 text-xs leading-relaxed text-muted-foreground"
+                class="max-h-48 overflow-auto whitespace-pre-wrap rounded-lg border bg-muted/50 p-3 font-mono text-xs leading-relaxed text-muted-foreground"
               >{{ challenge.prompt }}</pre>
             </div>
             <div class="flex flex-col gap-2">
-              <Label :for="`output-${index}`">粘贴完整输出</Label>
+              <Label :for="`output-${index}`" class="text-muted-foreground">粘贴完整输出</Label>
               <Textarea
                 :id="`output-${index}`"
                 v-model="outputs[index]"
@@ -121,8 +127,9 @@ onMounted(async () => {
         </Alert>
 
         <div>
-          <Button :disabled="!bank || analyzing" @click="analyze">
-            <ScanSearch data-icon="inline-start" />
+          <Button :disabled="!bank || analyzing" class="shadow-md shadow-primary/20" @click="analyze">
+            <Loader2 v-if="analyzing" class="animate-spin" data-icon="inline-start" />
+            <ScanSearch v-else data-icon="inline-start" />
             {{ analyzing ? '正在本地计算……' : '计算归因概率' }}
           </Button>
         </div>

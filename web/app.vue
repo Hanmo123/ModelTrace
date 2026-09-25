@@ -3,6 +3,7 @@ import { Toaster } from '@/components/ui/sonner'
 </script>
 
 <template>
-  <NuxtPage />
-  <Toaster rich-colors position="top-right" />
+  <NuxtLayout>
+    <NuxtPage />
+  </NuxtLayout>
 </template>

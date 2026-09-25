@@ -24,7 +24,7 @@ import {
 import { Progress } from '@/components/ui/progress'
 import { Separator } from '@/components/ui/separator'
 import type { EndpointPreset } from '@/composables/usePresets'
-import type { StepState } from '@/composables/useApiTest'
+import type { RunStatus, StepState } from '@/composables/useApiTest'
 import { percent } from '@/lib/format'
 import { cn } from '@/lib/utils'
 
@@ -49,12 +49,18 @@ const STEP_LABELS: Record<StepState, string> = {
 const stepClass = (step: StepState) =>
   ({
     pending: 'border-border text-muted-foreground',
-    working: 'border-blue-200 bg-blue-50 text-blue-700',
-    done: 'border-emerald-200 bg-emerald-50 text-emerald-700',
-    invalid: 'border-amber-200 bg-amber-50 text-amber-700',
-    error: 'border-red-200 bg-red-50 text-red-700',
+    working: 'border-primary/40 bg-primary/10 text-primary',
+    done: 'border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400',
+    invalid: 'border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-400',
+    error: 'border-red-500/30 bg-red-500/10 text-red-700 dark:text-red-400',
     skipped: 'border-border text-muted-foreground line-through',
   })[step]
+
+const STATUS_DOT: Record<RunStatus, string> = {
+  running: 'bg-primary',
+  success: 'bg-emerald-500',
+  failed: 'bg-red-500',
+}
 
 function openCreate() {
   editingPreset.value = null
@@ -116,21 +122,21 @@ function maskApiKey(key: string): string {
 <template>
   <Card>
     <CardHeader>
-      <div class="flex items-center justify-between">
+      <div class="flex items-center justify-between gap-4">
         <div>
           <CardTitle>Endpoint 预设</CardTitle>
           <CardDescription>
             保存多组 Base URL + API Key + 模型组合，仅存储在浏览器 localStorage。检测时逐组发送最多 6 次挑战，凑齐 3 份有效回答后本地归因。
           </CardDescription>
         </div>
-        <Button @click="openCreate">
+        <Button class="shrink-0" @click="openCreate">
           <Plus data-icon="inline-start" />
           新增预设
         </Button>
       </div>
     </CardHeader>
     <CardContent>
-      <Empty v-if="!presets.length" class="border">
+      <Empty v-if="!presets.length" class="border border-dashed">
         <EmptyHeader>
           <EmptyMedia variant="icon">
             <Server />
@@ -140,27 +146,41 @@ function maskApiKey(key: string): string {
         </EmptyHeader>
       </Empty>
 
-      <div v-else class="flex flex-col gap-4">
+      <div v-else class="grid gap-4 xl:grid-cols-2">
         <div
           v-for="preset in presets"
           :key="preset.id"
-          class="flex flex-col gap-3 rounded-lg border p-4"
+          class="group flex flex-col gap-3 rounded-xl border bg-card p-4 transition-colors hover:border-primary/30"
         >
           <div class="flex flex-wrap items-start justify-between gap-2">
-            <div class="min-w-0">
-              <div class="flex items-center gap-2">
-                <strong class="truncate text-sm">{{ preset.name }}</strong>
-                <Badge variant="secondary" class="shrink-0">
-                  {{ preset.apiType === 'responses' ? 'Responses' : 'Chat' }}
-                </Badge>
-              </div>
-              <span class="block truncate text-xs text-muted-foreground" :title="preset.baseUrl">
-                {{ preset.baseUrl }}
+            <div class="flex min-w-0 items-start gap-3">
+              <span class="relative mt-1.5 flex size-2.5 shrink-0">
+                <span
+                  v-if="runStates[preset.id]?.status === 'running'"
+                  class="absolute inline-flex size-full animate-ping rounded-full bg-primary opacity-60"
+                />
+                <span
+                  :class="cn(
+                    'relative inline-flex size-2.5 rounded-full',
+                    runStates[preset.id] ? STATUS_DOT[runStates[preset.id].status] : 'bg-muted-foreground/30',
+                  )"
+                />
               </span>
-              <div class="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground">
-                <span>模型：<code class="rounded bg-muted px-1 py-0.5">{{ preset.model }}</code></span>
-                <span>密钥：<code class="rounded bg-muted px-1 py-0.5">{{ maskApiKey(preset.apiKey) }}</code></span>
-                <span v-if="preset.temperature !== null">温度：{{ preset.temperature }}</span>
+              <div class="min-w-0">
+                <div class="flex items-center gap-2">
+                  <strong class="truncate text-sm">{{ preset.name }}</strong>
+                  <Badge variant="outline" class="shrink-0 font-normal">
+                    {{ preset.apiType === 'responses' ? 'Responses' : 'Chat' }}
+                  </Badge>
+                </div>
+                <span class="block truncate text-xs text-muted-foreground" :title="preset.baseUrl">
+                  {{ preset.baseUrl }}
+                </span>
+                <div class="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground">
+                  <span>模型 <code class="rounded bg-muted px-1 py-0.5">{{ preset.model }}</code></span>
+                  <span>密钥 <code class="rounded bg-muted px-1 py-0.5">{{ maskApiKey(preset.apiKey) }}</code></span>
+                  <span v-if="preset.temperature !== null">温度 {{ preset.temperature }}</span>
+                </div>
               </div>
             </div>
             <div class="flex shrink-0 items-center gap-1">
@@ -187,7 +207,7 @@ function maskApiKey(key: string): string {
           <template v-if="runStates[preset.id]">
             <Separator />
             <div class="flex flex-col gap-2">
-              <div class="flex flex-wrap items-center gap-2">
+              <div class="flex flex-wrap items-center gap-1.5">
                 <Badge
                   v-for="(step, index) in runStates[preset.id].steps"
                   :key="index"
@@ -200,9 +220,9 @@ function maskApiKey(key: string): string {
               <div class="flex items-center gap-3">
                 <Progress
                   :model-value="(runStates[preset.id].validCount / 3) * 100"
-                  class="h-2 flex-1"
+                  class="h-1.5 flex-1"
                 />
-                <span class="text-xs text-muted-foreground">
+                <span class="tnum text-xs text-muted-foreground">
                   有效 {{ runStates[preset.id].validCount }}/3
                 </span>
               </div>
@@ -218,11 +238,11 @@ function maskApiKey(key: string): string {
               <Separator />
               <div class="flex items-center justify-between gap-2">
                 <p class="text-sm">
-                  最可能：
-                  <strong>{{ runStates[preset.id].result!.prediction_name }}</strong>
-                  <span class="text-muted-foreground">
-                    （{{ percent(runStates[preset.id].result!.probability) }} ·
-                    {{ runStates[preset.id].result!.family_prediction_name }}）
+                  最可能
+                  <strong class="text-primary">{{ runStates[preset.id].result!.prediction_name }}</strong>
+                  <span class="tnum text-muted-foreground">
+                    {{ percent(runStates[preset.id].result!.probability) }} ·
+                    {{ runStates[preset.id].result!.family_prediction_name }}
                   </span>
                 </p>
                 <Button variant="ghost" size="sm" @click="toggleExpanded(preset.id)">
@@ -230,7 +250,7 @@ function maskApiKey(key: string): string {
                     data-icon="inline-start"
                     :class="cn('transition-transform', expandedResults.has(preset.id) && 'rotate-180')"
                   />
-                  {{ expandedResults.has(preset.id) ? '收起结果' : '完整结果' }}
+                  {{ expandedResults.has(preset.id) ? '收起' : '详情' }}
                 </Button>
               </div>
               <AttributionResult

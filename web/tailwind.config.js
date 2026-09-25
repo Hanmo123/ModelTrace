@@ -12,9 +12,19 @@ module.exports = {
     container: {
       center: true,
       padding: '2rem',
-      screens: { '2xl': '1400px' },
+      screens: { '2xl': '1200px' },
     },
     extend: {
+      fontFamily: {
+        sans: [
+          '"Inter Variable"',
+          'ui-sans-serif',
+          'system-ui',
+          '"PingFang SC"',
+          '"Microsoft YaHei"',
+          'sans-serif',
+        ],
+      },
       colors: {
         border: 'hsl(var(--border))',
         input: 'hsl(var(--input))',
