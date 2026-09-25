@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@ai-sdk/openai": "^2.0.0",
+    "@lucide/vue": "^1.48.0",
     "@vueuse/core": "^15.0.0",
     "ai": "^5.0.0",
     "class-variance-authority": "^0.7.1",
