@@ -223,13 +223,32 @@ try {
       .querySelector('[aria-label="服务商测试详情"]')
       .textContent.includes("测试完成"),
   );
-  assert.equal(calls.length, 4); // short first answer + 3 valid answers
+  assert.equal(calls.length, 3); // 3 challenges total: one short + two valid
   assert.equal(calls[0].url, "/v1/chat/completions");
   assert.equal(calls[0].auth, "Bearer sk-test-chat");
   assert.equal(typeof calls[0].data.messages[0].content, "string");
   assert.match(
     await page.$eval('[aria-label="服务商测试详情"]', (el) => el.textContent),
-    /有效查询 3\/3/,
+    /有效查询 2\/3/,
+  );
+  assert.equal(
+    (await page.$$('[aria-label="挑战与模型回答"] details')).length,
+    3,
+  );
+  assert(
+    await page.$eval('[aria-label="服务商测试详情"]', (el) => {
+      const result = el.querySelector('[aria-label="归因结果"]');
+      const info = el.querySelector('[aria-label="服务商信息"]');
+      return (
+        !!(
+          result.compareDocumentPosition(info) &
+          Node.DOCUMENT_POSITION_FOLLOWING
+        ) &&
+        result.nextElementSibling?.getAttribute("data-orientation") ===
+          "horizontal"
+      );
+    }),
+    "Results and separator must precede provider information",
   );
   assert(
     !(await page.$eval('[aria-label="服务商测试详情"]', (el) =>
@@ -258,7 +277,7 @@ try {
     ),
   );
   assert.equal(counts["bad-key"], 1); // stop immediately on authentication failure
-  assert.equal(counts.invalid, 6); // bounded attempts
+  assert.equal(counts.invalid, 3); // never generate replacement challenges
   assert.equal(counts["responses-model"], 3);
   await clickText("Bad key", "article strong");
   assert.match(

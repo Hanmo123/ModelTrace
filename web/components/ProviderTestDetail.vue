@@ -11,6 +11,7 @@ import {
   EmptyTitle,
 } from "@/components/ui/empty";
 import { Progress } from "@/components/ui/progress";
+import { Separator } from "@/components/ui/separator";
 import { presetLabel, type EndpointPreset } from "@/composables/usePresets";
 import type { PresetRunState, StepState } from "@/composables/useApiTest";
 import type { TerminalSession } from "@/composables/useTerminalTest";
@@ -37,7 +38,30 @@ const labels: Record<StepState, string> = {
 
 <template>
   <div class="flex flex-col gap-4">
+    <section
+      v-if="terminal?.result || run?.result"
+      aria-label="归因结果"
+      class="flex flex-col gap-3"
+    >
+      <template v-if="terminal?.result">
+        <p class="px-1 text-xs text-muted-foreground">
+          终端 curl 回答 · 有效 {{ terminal.result.used_outputs }}/3
+        </p>
+        <ResultPanel :result="terminal.result" />
+      </template>
+      <template v-else-if="run?.result">
+        <p
+          v-if="run.status === 'running'"
+          class="px-1 text-xs text-muted-foreground"
+        >
+          已有初步结果，概率达到 99% 即结束，否则继续测试剩余题目。
+        </p>
+        <ResultPanel :result="run.result" />
+      </template>
+    </section>
+    <Separator v-if="terminal?.result || run?.result" />
     <div
+      aria-label="服务商信息"
       class="flex flex-wrap items-start justify-between gap-3 rounded-md border p-3.5"
     >
       <div class="flex min-w-0 flex-col gap-1.5">
@@ -55,11 +79,16 @@ const labels: Record<StepState, string> = {
               : "Chat Completions"
           }}
           · 密钥已配置
+          <span v-if="run">
+            ·
+            {{ run.transport === "proxy" ? "服务端代理" : "浏览器直连" }}</span
+          >
         </p>
       </div>
       <div class="flex flex-wrap items-center gap-2">
         <Button
           v-if="proxyAvailable"
+          :disabled="disabled"
           size="sm"
           variant="outline"
           @click="$emit('proxy')"
@@ -93,13 +122,25 @@ const labels: Record<StepState, string> = {
       </div>
     </div>
 
-    <div v-if="run || queued" class="flex flex-col gap-2 px-1">
+    <div
+      v-if="run || queued"
+      aria-label="调用进度"
+      class="flex flex-col gap-2 px-1"
+    >
       <p class="text-xs text-muted-foreground" role="status" aria-live="polite">
         {{ queued ? "已加入批量测试队列，等待空闲任务位…" : run?.message }}
       </p>
       <div v-if="run" class="flex items-center gap-3">
         <Progress
-          :model-value="(run.validCount / 3) * 100"
+          :model-value="
+            run.finishedAt
+              ? 100
+              : (run.steps.filter(
+                  (step) => step !== 'pending' && step !== 'working',
+                ).length /
+                  run.challenges.length) *
+                100
+          "
           class="h-1.5 flex-1"
         />
         <span class="tnum shrink-0 text-xs text-muted-foreground"
@@ -124,29 +165,14 @@ const labels: Record<StepState, string> = {
       >
     </Alert>
 
-    <template v-if="terminal?.result">
-      <p class="px-1 text-xs text-muted-foreground">
-        终端 curl 回答 · 有效 {{ terminal.result.used_outputs }}/3
-      </p>
-      <ResultPanel :result="terminal.result" />
-    </template>
-    <template v-else-if="run?.result">
-      <p
-        v-if="run.status === 'running'"
-        class="px-1 text-xs text-muted-foreground"
-      >
-        已有初步结果，后续有效回答返回后会自动更新。
-      </p>
-      <ResultPanel :result="run.result" />
-    </template>
-    <Empty v-else-if="!run" class="min-h-60 rounded-md border">
+    <Empty v-if="!run && !terminal?.result" class="min-h-60 rounded-md border">
       <EmptyHeader>
         <EmptyMedia variant="icon"><ScanSearch /></EmptyMedia>
         <EmptyTitle>{{ queued ? "等待开始" : "准备开始测试" }}</EmptyTitle>
         <EmptyDescription
-          >使用 AI SDK
-          直连此服务商。第一份有效回答返回后即可展示初步归因，随后继续收集最多 3
-          份有效回答。</EmptyDescription
+          >使用 AI SDK 调用此服务商，最多测试 3 题。
+          第一份有效回答返回后即可展示初步归因；概率达到 99%
+          即成功检验并停止后续调用。</EmptyDescription
         >
       </EmptyHeader>
     </Empty>

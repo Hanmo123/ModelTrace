@@ -7,10 +7,12 @@
     "dev": "nuxt dev",
     "build": "nuxt build",
     "generate": "nuxt generate",
+    "package:static": "node scripts/package-static.mjs",
     "preview": "nuxt preview",
-    "test:auto": "node tests/auto-test.mjs",
+    "test:auto": "node tests/api-runner-test.mjs && node tests/auto-test.mjs",
     "test:terminal": "node tests/terminal-proxy-test.mjs",
     "test:proxy": "node tests/proxy-consent-test.mjs",
+    "test:static": "node tests/static-package-test.mjs",
     "postinstall": "nuxt prepare"
   },
   "dependencies": {

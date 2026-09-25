@@ -6,6 +6,7 @@ __pycache__/
 node_modules/
 .nuxt/
 .output/
+/dist/
 *.tsbuildinfo
 worker/wrangler.toml
 worker/.wrangler/

@@ -14,6 +14,8 @@ export type RunStatus = "running" | "success" | "failed";
 
 export interface PresetRunState {
   status: RunStatus;
+  transport: "direct" | "proxy";
+  earlyStopped: boolean;
   steps: StepState[];
   challenges: Challenge[];
   outputs: string[];
@@ -28,7 +30,8 @@ export interface PresetRunState {
 }
 
 const TARGET_VALID = 3;
-const MAX_ATTEMPTS = 6;
+const MAX_ATTEMPTS = 3;
+const SUCCESS_PROBABILITY = 0.99;
 const BATCH_CONCURRENCY = 2;
 
 function describeError(error: unknown, apiKey: string): string {
@@ -76,6 +79,8 @@ export function useApiTest() {
     // 必须通过代理更新，不能修改放入 useState 前的原始对象。
     const state = reactive<PresetRunState>({
       status: "running",
+      transport: proxyBaseURL ? "proxy" : "direct",
+      earlyStopped: false,
       steps: challenges.map(() => "pending"),
       challenges,
       outputs: challenges.map(() => ""),
@@ -137,6 +142,11 @@ export function useApiTest() {
               })),
               currentBank,
             );
+            // 使用未四舍五入的模型概率，而不是展示值或家族概率。
+            if (state.result.probability >= SUCCESS_PROBABILITY) {
+              state.earlyStopped = index < challenges.length - 1;
+              break;
+            }
           } else {
             state.steps[index] = "invalid";
             state.stepErrors[index] =
@@ -161,7 +171,9 @@ export function useApiTest() {
       }
       state.status = state.result ? "success" : "failed";
       state.message = state.result
-        ? `测试完成：${state.validCount}/${TARGET_VALID} 份有效回答进入归因`
+        ? state.result.probability >= SUCCESS_PROBABILITY
+          ? `测试完成：成功检验，归因概率 ≥99%。${state.earlyStopped ? "已停止后续挑战；" : ""}${state.validCount}/${TARGET_VALID} 份有效回答进入归因`
+          : `测试完成：${state.validCount}/${TARGET_VALID} 份有效回答进入归因`
         : `没有获得可分析输出。${state.errors[0] || ""}`;
     } catch (error) {
       state.status = "failed";
@@ -175,7 +187,7 @@ export function useApiTest() {
     return state;
   }
 
-  async function runBatch(presets: EndpointPreset[]) {
+  async function runBatch(presets: EndpointPreset[], proxyBaseURL?: string) {
     if (batchRunning.value) return;
     if (!bank.value) throw new Error("指纹库尚未加载完成");
     const queue = presets
@@ -193,7 +205,7 @@ export function useApiTest() {
               queuedIds.value = queuedIds.value.filter(
                 (id) => id !== preset.id,
               );
-              await runPreset(preset);
+              await runPreset(preset, proxyBaseURL);
             }
           },
         ),

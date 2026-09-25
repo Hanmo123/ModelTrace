@@ -58,19 +58,34 @@ const proxyBaseURL = useRuntimeConfig().public.proxyUrl as string;
 // 暂时隐藏终端入口，保留实现以便后续恢复。
 const terminalEnabled = false;
 const proxyOpen = ref(false);
-const proxyPreset = ref<EndpointPreset | null>(null);
+const {
+  allowed: proxyAllowed,
+  allow: allowProxy,
+  revoke: revokeProxy,
+} = useProxyConsent(proxyBaseURL);
+const pendingTest = ref<{ targets: EndpointPreset[]; batch: boolean } | null>(
+  null,
+);
 const terminalOpen = ref(false);
 const terminalPreset = ref<EndpointPreset | null>(null);
 const { sessions: terminalSessions, clear: clearTerminal } = useTerminalTest();
 
-function askProxy(preset: EndpointPreset) {
-  if (!proxyBaseURL) {
-    if (terminalEnabled) openTerminal(preset);
+function requestTests(targets: EndpointPreset[], batch: boolean) {
+  if (!targets.length || proxyOpen.value) return;
+  selectedId.value = targets[0]!.id;
+  if (proxyBaseURL && !proxyAllowed.value) {
+    pendingTest.value = {
+      targets: targets.map((preset) => ({ ...preset })),
+      batch,
+    };
+    proxyOpen.value = true;
     return;
   }
-  selectedId.value = preset.id;
-  proxyPreset.value = preset;
-  proxyOpen.value = true;
+  void executeTests(
+    targets,
+    batch,
+    proxyAllowed.value ? proxyBaseURL : undefined,
+  );
 }
 function isNetworkFailure(id: string) {
   const state = runStates.value[id];
@@ -83,22 +98,19 @@ function isNetworkFailure(id: string) {
     )
   );
 }
-async function consentProxy() {
-  const preset = proxyPreset.value;
+function consentProxy() {
+  const pending = pendingTest.value;
+  pendingTest.value = null;
   proxyOpen.value = false;
-  if (!preset || !proxyBaseURL) return;
-  try {
-    clearTerminal(preset.id);
-    const state = await runPreset(preset, proxyBaseURL);
-    if (state.status === "failed") toast.error("代理请求失败，请查看测试详情");
-  } catch (error) {
-    toast.error(error instanceof Error ? error.message : "代理请求失败");
-  }
+  if (!pending || !proxyBaseURL) return;
+  allowProxy();
+  void executeTests(pending.targets, pending.batch, proxyBaseURL);
 }
 function declineProxy() {
-  const preset = proxyPreset.value;
+  const pending = pendingTest.value;
+  pendingTest.value = null;
   proxyOpen.value = false;
-  if (preset && terminalEnabled) openTerminal(preset);
+  if (pending) void executeTests(pending.targets, pending.batch);
 }
 function openTerminal(preset: EndpointPreset) {
   selectedId.value = preset.id;
@@ -117,7 +129,7 @@ watch(
 onMounted(load);
 
 function locked(id: string) {
-  return batchRunning.value || isRunning(id);
+  return proxyOpen.value || batchRunning.value || isRunning(id);
 }
 function status(id: string) {
   if (queuedIds.value.includes(id)) return "排队中";
@@ -152,40 +164,41 @@ function confirmDelete() {
   deleteOpen.value = false;
   toast.success("服务商已删除");
 }
-async function test(preset: EndpointPreset) {
+function test(preset: EndpointPreset) {
   if (!bank.value || locked(preset.id)) return;
-  selectedId.value = preset.id;
+  requestTests([preset], false);
+}
+function testAll() {
+  if (!bank.value || batchRunning.value || proxyOpen.value) return;
+  requestTests(
+    presets.value.filter((preset) => !isRunning(preset.id)),
+    true,
+  );
+}
+async function executeTests(
+  targets: EndpointPreset[],
+  batch: boolean,
+  proxyURL?: string,
+) {
   try {
-    clearTerminal(preset.id);
-    const state = await runPreset(preset);
-    if (isNetworkFailure(preset.id)) {
-      if (proxyBaseURL) askProxy(preset);
-      else if (terminalEnabled) openTerminal(preset);
-      else toast.error(`「${presetLabel(preset)}」直连失败，请查看详情`);
-    } else if (state.status === "failed") {
-      toast.error(`「${presetLabel(preset)}」测试失败，请查看详情`);
+    targets.forEach((preset) => clearTerminal(preset.id));
+    if (batch) {
+      await runBatch(targets, proxyURL);
+      const success = targets.filter(
+        (preset) => runStates.value[preset.id]?.status === "success",
+      ).length;
+      toast.success(
+        `批量测试完成：成功 ${success} 个，失败 ${targets.length - success} 个`,
+      );
+    } else {
+      const preset = targets[0]!;
+      const state = await runPreset(preset, proxyURL);
+      if (state.status === "failed") {
+        toast.error(`「${presetLabel(preset)}」测试失败，请查看详情`);
+      }
     }
   } catch (error) {
     toast.error(error instanceof Error ? error.message : "无法开始测试");
-  }
-}
-async function testAll() {
-  if (!bank.value || batchRunning.value) return;
-  // 仅统计本轮新启动的服务商，不把之前的结果混入汇总。
-  const targets = presets.value.filter((preset) => !isRunning(preset.id));
-  if (!targets.length) return;
-  selectedId.value = targets[0]!.id;
-  try {
-    targets.forEach((preset) => clearTerminal(preset.id));
-    await runBatch(targets);
-    const success = targets.filter(
-      (preset) => runStates.value[preset.id]?.status === "success",
-    ).length;
-    toast.success(
-      `批量测试完成：成功 ${success} 个，失败 ${targets.length - success} 个`,
-    );
-  } catch (error) {
-    toast.error(error instanceof Error ? error.message : "批量测试失败");
   }
 }
 </script>
@@ -200,10 +213,22 @@ async function testAll() {
       <div class="flex items-baseline gap-2">
         <h1 class="text-sm font-semibold">自动测试</h1>
         <span class="text-xs text-muted-foreground"
-          >{{ presets.length }} 个服务商 · 浏览器直连</span
+          >{{ presets.length }} 个服务商 ·
+          {{ proxyAllowed ? "服务端代理已授权" : "浏览器直连" }}</span
         >
       </div>
       <div class="flex items-center gap-2">
+        <Button
+          v-if="proxyAllowed"
+          :disabled="
+            batchRunning || presets.some((preset) => isRunning(preset.id))
+          "
+          title="测试结束后可撤销代理授权"
+          size="sm"
+          variant="ghost"
+          @click="revokeProxy"
+          >撤销代理授权</Button
+        >
         <Button size="sm" variant="outline" @click="configure()"
           ><Plus data-icon="inline-start" />添加服务商</Button
         >
@@ -213,6 +238,7 @@ async function testAll() {
             !bank ||
             !presets.length ||
             batchRunning ||
+            proxyOpen ||
             presets.every((p) => isRunning(p.id))
           "
           @click="testAll"
@@ -361,8 +387,9 @@ async function testAll() {
           </div>
         </article>
         <p class="px-1 text-xs leading-relaxed text-muted-foreground">
-          每个服务商独立生成挑战，最多尝试 6 题以收集 3 份有效回答。批量并发 2
-          个服务商；测试会消耗所填 API 的额度，Endpoint 需允许跨域（CORS）。
+          每个服务商最多测试 3 题；归因概率达到 99%
+          即成功检验，不再请求后续题目。 批量并发 2 个服务商；测试会消耗所填 API
+          的额度。直连需要服务商允许跨域（CORS），也可在测试前授权使用代理。
         </p>
       </section>
       <section aria-label="服务商测试详情" class="min-h-0 overflow-y-auto">
@@ -374,12 +401,14 @@ async function testAll() {
             terminalEnabled ? terminalSessions[selected.id] : undefined
           "
           :terminal-available="terminalEnabled"
-          :proxy-available="!!proxyBaseURL && isNetworkFailure(selected.id)"
+          :proxy-available="
+            !!proxyBaseURL && !proxyAllowed && isNetworkFailure(selected.id)
+          "
           :queued="queuedIds.includes(selected.id)"
           :disabled="!bank || locked(selected.id)"
           @test="test(selected)"
           @terminal="openTerminal(selected)"
-          @proxy="askProxy(selected)"
+          @proxy="test(selected)"
         />
         <Empty v-else class="min-h-80 rounded-md border lg:h-full">
           <EmptyHeader>
@@ -397,14 +426,17 @@ async function testAll() {
         <AlertDialogHeader>
           <AlertDialogTitle>是否通过 Cloudflare 代理测试？</AlertDialogTitle>
           <AlertDialogDescription>
-            浏览器直连失败。若同意，你的 API Key、模型 ID 和挑战提示词将发送到
-            {{ proxyBaseURL }}，再由该服务器请求「{{ proxyPreset?.name }}」。
+            即将{{ pendingTest?.batch ? "批量测试" : "测试" }}
+            {{ pendingTest?.targets.length || 0 }} 个服务商。 若同意，你的 API
+            Key、模型 ID 和挑战提示词将发送到
+            {{ proxyBaseURL }}，再由该服务器请求服务商。
+            授权会在此浏览器记住，后续单个和批量测试均直接使用此代理，不再询问；可在测试结束后撤销授权。
             这不再是纯浏览器直连；请仅在信任代理运营方时继续。
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
           <AlertDialogCancel @click="declineProxy"
-            >不使用代理</AlertDialogCancel
+            >仅本次直连</AlertDialogCancel
           >
           <AlertDialogAction @click="consentProxy"
             >同意并通过代理测试</AlertDialogAction
