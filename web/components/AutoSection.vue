@@ -54,6 +54,55 @@ const dialogOpen = ref(false);
 const editing = ref<EndpointPreset | null>(null);
 const deleting = ref<EndpointPreset | null>(null);
 const deleteOpen = ref(false);
+const proxyBaseURL = useRuntimeConfig().public.proxyUrl as string;
+const proxyOpen = ref(false);
+const proxyPreset = ref<EndpointPreset | null>(null);
+const terminalOpen = ref(false);
+const terminalPreset = ref<EndpointPreset | null>(null);
+const { sessions: terminalSessions, clear: clearTerminal } = useTerminalTest();
+
+function askProxy(preset: EndpointPreset) {
+  if (!proxyBaseURL) {
+    openTerminal(preset);
+    return;
+  }
+  selectedId.value = preset.id;
+  proxyPreset.value = preset;
+  proxyOpen.value = true;
+}
+function isNetworkFailure(id: string) {
+  const state = runStates.value[id];
+  return (
+    state?.status === "failed" &&
+    state.errors.some((message) =>
+      /failed to fetch|networkerror|network error|load failed|cors/i.test(
+        message,
+      ),
+    )
+  );
+}
+async function consentProxy() {
+  const preset = proxyPreset.value;
+  proxyOpen.value = false;
+  if (!preset || !proxyBaseURL) return;
+  try {
+    const state = await runPreset(preset, proxyBaseURL);
+    if (state.status === "failed")
+      toast.error("代理请求失败；可以使用终端方式");
+  } catch (error) {
+    toast.error(error instanceof Error ? error.message : "代理请求失败");
+  }
+}
+function declineProxy() {
+  const preset = proxyPreset.value;
+  proxyOpen.value = false;
+  if (preset) openTerminal(preset);
+}
+function openTerminal(preset: EndpointPreset) {
+  selectedId.value = preset.id;
+  terminalPreset.value = preset;
+  terminalOpen.value = true;
+}
 
 watch(
   () => presets.value.map((preset) => preset.id),
@@ -71,9 +120,9 @@ function locked(id: string) {
 function status(id: string) {
   if (queuedIds.value.includes(id)) return "排队中";
   const state = runStates.value[id];
-  return !state
-    ? "未测试"
-    : { running: "测试中", success: "已完成", failed: "失败" }[state.status];
+  if (state?.status === "running") return "测试中";
+  if (state?.result || terminalSessions.value[id]?.result) return "已完成";
+  return state?.status === "failed" ? "失败" : "未测试";
 }
 function configure(preset: EndpointPreset | null = null) {
   editing.value = preset;
@@ -84,6 +133,7 @@ function save(input: Omit<EndpointPreset, "id">) {
     if (locked(editing.value.id)) return;
     updatePreset(editing.value.id, input);
     clearRun(editing.value.id);
+    clearTerminal(editing.value.id);
     selectedId.value = editing.value.id;
   } else {
     selectedId.value = addPreset(input).id;
@@ -93,6 +143,7 @@ function save(input: Omit<EndpointPreset, "id">) {
 function confirmDelete() {
   if (!deleting.value || locked(deleting.value.id)) return;
   clearRun(deleting.value.id);
+  clearTerminal(deleting.value.id);
   removePreset(deleting.value.id);
   deleting.value = null;
   deleteOpen.value = false;
@@ -103,8 +154,12 @@ async function test(preset: EndpointPreset) {
   selectedId.value = preset.id;
   try {
     const state = await runPreset(preset);
-    if (state.status === "failed")
+    if (isNetworkFailure(preset.id)) {
+      if (proxyBaseURL) askProxy(preset);
+      else openTerminal(preset);
+    } else if (state.status === "failed") {
       toast.error(`「${presetLabel(preset)}」测试失败，请查看详情`);
+    }
   } catch (error) {
     toast.error(error instanceof Error ? error.message : "无法开始测试");
   }
@@ -213,9 +268,7 @@ async function testAll() {
               }}</strong>
               <Badge
                 :variant="
-                  runStates[preset.id]?.status === 'failed'
-                    ? 'destructive'
-                    : 'secondary'
+                  status(preset.id) === '失败' ? 'destructive' : 'secondary'
                 "
                 class="shrink-0 font-normal"
               >
@@ -239,14 +292,21 @@ async function testAll() {
               }}</Badge>
             </span>
             <span
-              v-if="runStates[preset.id]?.result"
+              v-if="
+                runStates[preset.id]?.result ||
+                terminalSessions[preset.id]?.result
+              "
               class="flex flex-wrap items-baseline gap-2 text-sm"
             >
               <strong class="uppercase">{{
-                runStates[preset.id]!.result!.prediction_name
+                (runStates[preset.id]?.result ||
+                  terminalSessions[preset.id]?.result)!.prediction_name
               }}</strong>
               <span class="tnum">{{
-                percent(runStates[preset.id]!.result!.probability)
+                percent(
+                  (runStates[preset.id]?.result ||
+                    terminalSessions[preset.id]?.result)!.probability,
+                )
               }}</span>
               <span
                 v-if="isRunning(preset.id)"
@@ -304,9 +364,13 @@ async function testAll() {
           v-if="selected"
           :preset="selected"
           :run="runStates[selected.id]"
+          :terminal="terminalSessions[selected.id]"
+          :proxy-available="!!proxyBaseURL && isNetworkFailure(selected.id)"
           :queued="queuedIds.includes(selected.id)"
           :disabled="!bank || locked(selected.id)"
           @test="test(selected)"
+          @terminal="openTerminal(selected)"
+          @proxy="askProxy(selected)"
         />
         <Empty v-else class="min-h-80 rounded-md border lg:h-full">
           <EmptyHeader>
@@ -319,6 +383,27 @@ async function testAll() {
         </Empty>
       </section>
     </div>
+    <AlertDialog v-model:open="proxyOpen">
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>是否通过 Cloudflare 代理测试？</AlertDialogTitle>
+          <AlertDialogDescription>
+            浏览器直连失败。若同意，你的 API Key、模型 ID 和挑战提示词将发送到
+            {{ proxyBaseURL }}，再由该服务器请求「{{ proxyPreset?.name }}」。
+            这不再是纯浏览器直连；请仅在信任代理运营方时继续。
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel @click="declineProxy"
+            >不使用代理，改用终端</AlertDialogCancel
+          >
+          <AlertDialogAction @click="consentProxy"
+            >同意并通过代理测试</AlertDialogAction
+          >
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+    <TerminalTestDialog v-model:open="terminalOpen" :preset="terminalPreset" />
     <PresetFormDialog
       v-model:open="dialogOpen"
       :preset="editing"

@@ -63,7 +63,10 @@ export function useApiTest() {
     runStates.value = rest;
   }
 
-  async function runPreset(input: EndpointPreset): Promise<PresetRunState> {
+  async function runPreset(
+    input: EndpointPreset,
+    proxyBaseURL?: string,
+  ): Promise<PresetRunState> {
     if (!bank.value) throw new Error("指纹库尚未加载完成");
     if (isRunning(input.id)) return runStates.value[input.id]!;
     // 固定本轮配置与指纹库，不受后续编辑影响。
@@ -89,8 +92,11 @@ export function useApiTest() {
 
     try {
       const openai = createOpenAI({
-        baseURL: preset.baseUrl,
+        baseURL: proxyBaseURL || preset.baseUrl,
         apiKey: preset.apiKey,
+        ...(proxyBaseURL
+          ? { headers: { "X-ModelTrace-Endpoint": preset.baseUrl } }
+          : {}),
       });
       const model =
         preset.apiType === "responses"
@@ -143,7 +149,14 @@ export function useApiTest() {
           state.errors.push(`挑战 ${index + 1}：${state.stepErrors[index]}`);
           const statusCode = (error as { statusCode?: number } | null)
             ?.statusCode;
-          if (statusCode === 401 || statusCode === 403) break;
+          if (
+            statusCode === 401 ||
+            statusCode === 403 ||
+            /failed to fetch|networkerror|load failed|cors/i.test(
+              state.stepErrors[index],
+            )
+          )
+            break;
         }
       }
       state.status = state.result ? "success" : "failed";

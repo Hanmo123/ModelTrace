@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Loader2, Play, ScanSearch } from "lucide-vue-next";
+import { Loader2, Play, ScanSearch, Terminal } from "lucide-vue-next";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -13,14 +13,17 @@ import {
 import { Progress } from "@/components/ui/progress";
 import { presetLabel, type EndpointPreset } from "@/composables/usePresets";
 import type { PresetRunState, StepState } from "@/composables/useApiTest";
+import type { TerminalSession } from "@/composables/useTerminalTest";
 
 defineProps<{
   preset: EndpointPreset;
   run?: PresetRunState;
+  terminal?: TerminalSession;
+  proxyAvailable: boolean;
   queued: boolean;
   disabled: boolean;
 }>();
-defineEmits<{ test: [] }>();
+defineEmits<{ test: []; terminal: []; proxy: [] }>();
 const labels: Record<StepState, string> = {
   pending: "等待",
   working: "请求中",
@@ -53,23 +56,35 @@ const labels: Record<StepState, string> = {
           · 密钥已配置
         </p>
       </div>
-      <Button size="sm" :disabled="disabled" @click="$emit('test')">
-        <Loader2
-          v-if="run?.status === 'running'"
-          class="animate-spin"
-          data-icon="inline-start"
-        />
-        <Play v-else data-icon="inline-start" />
-        {{
-          queued
-            ? "排队中"
-            : run?.status === "running"
-              ? "测试中…"
-              : run
-                ? "重新测试"
-                : "开始测试"
-        }}
-      </Button>
+      <div class="flex flex-wrap items-center gap-2">
+        <Button
+          v-if="proxyAvailable"
+          size="sm"
+          variant="outline"
+          @click="$emit('proxy')"
+          >通过代理测试</Button
+        >
+        <Button size="sm" variant="outline" @click="$emit('terminal')">
+          <Terminal data-icon="inline-start" />终端方式
+        </Button>
+        <Button size="sm" :disabled="disabled" @click="$emit('test')">
+          <Loader2
+            v-if="run?.status === 'running'"
+            class="animate-spin"
+            data-icon="inline-start"
+          />
+          <Play v-else data-icon="inline-start" />
+          {{
+            queued
+              ? "排队中"
+              : run?.status === "running"
+                ? "测试中…"
+                : run
+                  ? "重新测试"
+                  : "开始测试"
+          }}
+        </Button>
+      </div>
     </div>
 
     <div v-if="run || queued" class="flex flex-col gap-2 px-1">
@@ -89,10 +104,14 @@ const labels: Record<StepState, string> = {
         本轮耗时 {{ ((run.finishedAt - run.startedAt) / 1000).toFixed(1) }} 秒
       </p>
     </div>
-    <Alert v-if="run?.status === 'failed' && !queued" variant="destructive">
+    <Alert
+      v-if="run?.status === 'failed' && !queued && !terminal?.result"
+      variant="destructive"
+    >
       <AlertDescription
         >{{ run.message }} 请检查 Endpoint、密钥、模型 ID
-        和跨域配置。</AlertDescription
+        和跨域配置；若浏览器跨域被阻止，可用「终端方式」复制 curl
+        命令并粘贴回答。</AlertDescription
       >
     </Alert>
 
@@ -104,6 +123,12 @@ const labels: Record<StepState, string> = {
         已有初步结果，后续有效回答返回后会自动更新。
       </p>
       <ResultPanel :result="run.result" />
+    </template>
+    <template v-else-if="terminal?.result">
+      <p class="px-1 text-xs text-muted-foreground">
+        终端 curl 回答 · 有效 {{ terminal.result.used_outputs }}/3
+      </p>
+      <ResultPanel :result="terminal.result" />
     </template>
     <Empty v-else-if="!run" class="min-h-60 rounded-md border">
       <EmptyHeader>

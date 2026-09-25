@@ -98,8 +98,7 @@ function submit() {
       <DialogHeader>
         <DialogTitle>{{ preset ? "编辑服务商" : "添加服务商" }}</DialogTitle>
         <DialogDescription>
-          四项均为必填。配置保存在当前浏览器；测试时 API Key 仅发送给你填写的
-          Endpoint。 localStorage 为明文存储，请勿在共享设备上保存敏感密钥。
+          四项均为必填，配置仅保存在当前浏览器。直连只发送至服务商；如果你选择代理测试，密钥和挑战会经过代理服务器。
         </DialogDescription>
       </DialogHeader>
       <form class="flex flex-col gap-4" novalidate @submit.prevent="submit">
