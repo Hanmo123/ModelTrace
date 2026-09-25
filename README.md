@@ -11,6 +11,24 @@ python start.py
 
 页面地址为 `http://127.0.0.1:7860/`。
 
+## Nuxt 3 新版前端（web/）
+
+`web/` 是基于 Nuxt 3（纯 SPA，`ssr: false`）+ Tailwind CSS + shadcn-vue 重新设计的前端，完全在浏览器本地运行，不依赖任何后端：
+
+- **API 自动检测**：基于 [AI SDK](https://ai-sdk.dev/)（`ai` + `@ai-sdk/openai`），浏览器直连目标 Endpoint，支持 OpenAI **Chat Completions** 与 **Responses API** 两种协议；每组自动发送最多 6 次挑战、凑齐 3 份有效回答后本地归因。
+- **Endpoint 预设**：可保存多组 Base URL + API Key + 模型组合（含可选温度），支持单组一键测试与一键批量测试（并发 2），全部仅存储在浏览器 localStorage（带版本 schema），API Key 不会离开浏览器。
+- **手动检测**：复制三条挑战发送给待测模型，粘贴输出后在浏览器本地完成归因。
+
+```bash
+cd web
+npm install
+npm run dev      # 开发
+npm run build    # 产出 .output（node .output/server/index.mjs 预览）
+npm run generate # 纯静态产物 .output/public，可部署到任意静态托管
+```
+
+> 注意：浏览器直连要求目标 Endpoint 允许跨域（CORS）。
+
 ## GitHub Pages
 
 `static/index.html` 是不依赖后端的手动测试版本，归因计算和指纹库读取都在浏览器本地完成。仓库附带的 GitHub Actions 会将 `static/` 部署到 GitHub Pages。
@@ -64,6 +82,7 @@ rebuild_unified_bank.py  重建统一全局库
 data/               参考数据与指纹库
 static/             页面资源
 templates/          页面模板
+web/                Nuxt 3 纯前端新版界面（SPA + Tailwind + shadcn-vue）
 ```
 
 ## 指纹库说明
