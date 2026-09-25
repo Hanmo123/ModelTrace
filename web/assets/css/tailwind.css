@@ -6,7 +6,7 @@
 
 @layer base {
   :root {
-    --background: 220 16% 96.5%;
+    --background: 220 14% 93%;
     --foreground: 225 15% 8%;
     --card: 0 0% 100%;
     --card-foreground: 225 15% 8%;
@@ -16,16 +16,19 @@
     --primary-foreground: 0 0% 100%;
     --secondary: 220 14% 93%;
     --secondary-foreground: 225 12% 14%;
-    --muted: 220 14% 94%;
+    --muted: 220 16% 95.5%;
     --muted-foreground: 225 8% 45%;
     --accent: 220 14% 92%;
     --accent-foreground: 225 12% 14%;
     --destructive: 0 74% 51%;
     --destructive-foreground: 0 0% 98%;
-    --border: 220 12% 89%;
-    --input: 220 12% 88%;
+    --border: 220 13% 90%;
+    --input: 220 12% 87%;
     --ring: 225 15% 10%;
     --radius: 0.85rem;
+    /* 图表：参考图的橙色系 */
+    --chart-1: 28 96% 53%;
+    --chart-2: 30 90% 87%;
   }
 
   .dark {
@@ -48,6 +51,8 @@
     --border: 225 9% 18%;
     --input: 225 9% 22%;
     --ring: 0 0% 85%;
+    --chart-1: 28 96% 55%;
+    --chart-2: 30 45% 30%;
   }
 }
 

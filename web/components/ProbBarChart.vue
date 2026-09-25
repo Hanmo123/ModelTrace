@@ -53,7 +53,7 @@ const labeled = (item: ModelResult, index: number) => index === 0 || item.probab
             <div
               :class="cn(
                 'w-full rounded-t-md transition-all duration-500',
-                index === 0 ? 'bg-primary' : 'bg-foreground/15 group-hover:bg-foreground/25',
+                index === 0 ? 'bg-[hsl(var(--chart-1))]' : 'bg-[hsl(var(--chart-2))] group-hover:opacity-80',
               )"
               :style="{ height: `${Math.max(item.probability * 100, 1.2)}%` }"
             />
