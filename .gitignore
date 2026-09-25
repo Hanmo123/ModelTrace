@@ -9,3 +9,4 @@ node_modules/
 *.tsbuildinfo
 worker/wrangler.toml
 worker/.wrangler/
+.wrangler/

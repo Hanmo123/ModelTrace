@@ -67,7 +67,9 @@ npm run test:proxy
 
 ## GitHub Pages
 
-`static/index.html` 是不依赖后端的手动测试版本，归因计算和指纹库读取都在浏览器本地完成。仓库附带的 GitHub Actions 会将 `static/` 部署到 GitHub Pages。
+`static/index.html` 仍保留为旧版手动测试页面。GitHub Actions 的 `.github/workflows/pages.yml` 现已改为将 Nuxt 前端 `web/.output/public` 部署到 GitHub Pages；构建时设置 `NUXT_APP_BASE_URL=/ModelTrace/` 和 `NUXT_PUBLIC_PROXY_URL=https://llm-iq-proxy.hanmo5888.workers.dev/v1`。指纹库加载路径会跟随 baseURL。工作流在 `main` 分支推送或手动触发时生效。
+
+**部署前需同步 Worker 来源**：目前部署在 `llm-iq-proxy.hanmo5888.workers.dev` 的 Worker 只允许 `http://localhost:3002`（预检为 204），而正式页面 `https://xqy2006.github.io/ModelTrace/` 的 Origin 是 `https://xqy2006.github.io`（目前预检为 403）。先在本地 `worker/wrangler.toml` 把 `SITE_ORIGIN` 改为 `https://xqy2006.github.io`，然后重新执行 `npx wrangler@latest deploy --config worker/wrangler.toml`；若只在本地测试，则应保持 `SITE_ORIGIN=http://localhost:3002` 并用这个主机名和端口打开页面。Worker 当前只支持一个来源；无需配置上游域名白名单。
 
 ## 使用
 
