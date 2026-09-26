@@ -158,8 +158,34 @@ try {
   const dialogClosed = () =>
     page.waitForFunction(() => !document.querySelector("[role=dialog]"));
 
-  await page.waitForSelector("textarea");
+  await page.waitForSelector('[role=tab][aria-selected="true"]');
+  assert.deepEqual(
+    await page.$$eval("[role=tab]", (tabs) =>
+      tabs.map((tab) => tab.textContent.trim()),
+    ),
+    ["自动测试", "手动测试"],
+  );
+  assert.equal(
+    await page.$eval('[role=tab][aria-selected="true"]', (tab) =>
+      tab.textContent.trim(),
+    ),
+    "自动测试",
+  );
+  await page.setViewport({ width: 390, height: 844 });
+  assert(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= innerWidth,
+    ),
+    "Empty provider actions must fit on mobile",
+  );
+  await clickText("手动测试", '[aria-label="服务商列表"] button');
+  await page.waitForSelector("textarea", { visible: true });
+  assert.equal(
+    await page.evaluate(() => document.activeElement.textContent.trim()),
+    "手动测试",
+  );
   await fill("textarea", "manual kept");
+  await page.setViewport({ width: 1500, height: 950 });
   await clickText("自动测试", "[role=tab]");
   await clickText("添加服务商");
   await page.waitForSelector("[role=dialog]");
@@ -177,6 +203,13 @@ try {
   await fill("#preset-base-url", api);
   await clickText("保存", "[role=dialog] button");
   await dialogClosed();
+  assert.equal(
+    await page.$$eval('[aria-label="服务商列表"] button', (buttons) =>
+      buttons.some((button) => button.textContent.trim() === "手动测试"),
+    ),
+    false,
+    "Manual shortcut is only shown for an empty provider list",
+  );
 
   async function add(name, model, protocol = "chat") {
     await clickText("添加服务商");
@@ -332,7 +365,13 @@ try {
   await clickText("保存", "[role=dialog] button");
   await dialogClosed();
   await page.reload({ waitUntil: "networkidle0" });
-  await clickText("自动测试", "[role=tab]");
+  assert.equal(
+    await page.$eval('[role=tab][aria-selected="true"]', (tab) =>
+      tab.textContent.trim(),
+    ),
+    "自动测试",
+    "Existing providers also open in automatic mode",
+  );
   assert(await page.$('button[aria-label="编辑 Renamed responses"]'));
   assert.equal(
     await page.evaluate(

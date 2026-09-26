@@ -3,8 +3,16 @@ import { Github, Moon, PenLine, Sun, Zap } from "lucide-vue-next";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
-const mode = ref("manual");
+const mode = ref("auto");
+const manualTab = ref<InstanceType<typeof TabsTrigger> | null>(null);
 const { isDark, toggle } = useTheme();
+
+async function openManual() {
+  mode.value = "manual";
+  await nextTick();
+  const trigger = manualTab.value?.$el;
+  if (trigger instanceof HTMLElement) trigger.focus();
+}
 </script>
 
 <template>
@@ -17,19 +25,20 @@ const { isDark, toggle } = useTheme();
           aria-label="测试模式"
         >
           <TabsTrigger
-            value="manual"
-            class="border bg-secondary px-3 py-2 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
-          >
-            <span class="flex items-center gap-1.5"
-              ><PenLine class="size-4 stroke-[1.5px]" />手动测试</span
-            >
-          </TabsTrigger>
-          <TabsTrigger
             value="auto"
             class="border bg-secondary px-3 py-2 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
           >
             <span class="flex items-center gap-1.5"
               ><Zap class="size-4 stroke-[1.5px]" />自动测试</span
+            >
+          </TabsTrigger>
+          <TabsTrigger
+            ref="manualTab"
+            value="manual"
+            class="border bg-secondary px-3 py-2 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
+          >
+            <span class="flex items-center gap-1.5"
+              ><PenLine class="size-4 stroke-[1.5px]" />手动测试</span
             >
           </TabsTrigger>
         </TabsList>
@@ -68,7 +77,7 @@ const { isDark, toggle } = useTheme();
         force-mount
         class="mt-0 flex min-h-0 flex-1 flex-col"
       >
-        <AutoSection />
+        <AutoSection @manual="openManual" />
       </TabsContent>
     </Tabs>
   </main>

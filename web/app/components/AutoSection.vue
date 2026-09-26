@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Loader2, Plus, Server, Zap } from "lucide-vue-next";
+import { Loader2, PenLine, Plus, Server, Zap } from "lucide-vue-next";
 import { toast } from "vue-sonner";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -29,6 +29,8 @@ import {
   type ProviderInput,
   type ProviderPreset,
 } from "@/lib/providers";
+
+const emit = defineEmits<{ manual: [] }>();
 
 const { presets, storageError, addPreset, updatePreset, removePreset } =
   usePresets();
@@ -302,11 +304,18 @@ async function executeTests(
               Key，一次添加多个模型。按模型查看结果，按服务商批量测试。</EmptyDescription
             >
           </EmptyHeader>
-          <EmptyContent
-            ><Button size="sm" @click="configure()"
+          <EmptyContent class="flex-row flex-wrap justify-center gap-2">
+            <Button size="sm" @click="configure()"
               ><Plus data-icon="inline-start" />添加第一个服务商</Button
-            ></EmptyContent
-          >
+            >
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              @click="emit('manual')"
+              ><PenLine data-icon="inline-start" />手动测试</Button
+            >
+          </EmptyContent>
         </Empty>
         <ProviderCard
           v-for="preset in presets"
