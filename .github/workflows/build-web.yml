@@ -1,0 +1,61 @@
+name: Build static web
+
+on:
+  workflow_call:
+    inputs:
+      base-url:
+        type: string
+        default: /
+      proxy-url:
+        type: string
+        default: ''
+      artifact-name:
+        type: string
+        default: modeltrace-web
+
+    outputs:
+      proxy-url:
+        description: Public proxy URL embedded in the static artifact
+        value: ${{ jobs.build.outputs.proxy-url }}
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    outputs:
+      proxy-url: ${{ inputs.proxy-url }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - name: Install web dependencies
+        run: npm ci --prefix web
+      - name: Test API runner and Worker boundaries (local mocks only)
+        working-directory: web
+        run: |
+          node tests/api-runner-test.mjs
+          npm run test:terminal
+      - name: Generate provider-independent static site
+        working-directory: web
+        env:
+          NUXT_APP_BASE_URL: ${{ inputs.base-url }}
+          NUXT_PUBLIC_PROXY_URL: ${{ inputs.proxy-url }}
+        run: |
+          npm run generate
+          test -s .output/public/index.html
+          test -s .output/public/data/unified_bank.json
+          touch .output/public/.nojekyll
+      - name: Upload static site
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ inputs.artifact-name }}
+          path: web/.output/public
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 7

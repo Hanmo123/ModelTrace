@@ -12,5 +12,6 @@ node_modules/
 /dist/
 *.tsbuildinfo
 worker/wrangler.toml
+worker/wrangler.ci.toml
 worker/.wrangler/
 .wrangler/

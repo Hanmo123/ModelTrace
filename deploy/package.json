@@ -1,0 +1,13 @@
+{
+  "name": "modeltrace-deploy",
+  "private": true,
+  "type": "module",
+  "engines": { "node": ">=22" },
+  "scripts": {
+    "test": "node --test cloudflare/*.test.mjs",
+    "wrangler": "wrangler"
+  },
+  "devDependencies": {
+    "wrangler": "4.141.0"
+  }
+}

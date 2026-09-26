@@ -1,0 +1,133 @@
+name: Deploy Cloudflare Worker and Pages
+
+on:
+  push:
+    paths:
+      - 'web/**'
+      - 'worker/**'
+      - 'deploy/cloudflare/**'
+      - 'deploy/package*.json'
+      - '.github/workflows/cloudflare.yml'
+      - '.github/workflows/build-web.yml'
+  pull_request:
+    paths:
+      - 'web/**'
+      - 'worker/**'
+      - 'deploy/cloudflare/**'
+      - 'deploy/package*.json'
+      - '.github/workflows/cloudflare.yml'
+      - '.github/workflows/build-web.yml'
+  workflow_dispatch:
+    inputs:
+      target:
+        description: Deployment target (production branch only)
+        type: choice
+        options: [all, worker, pages]
+        default: all
+        required: true
+
+permissions:
+  contents: read
+
+# Never interrupt an in-flight production upload. PR checks can be superseded.
+concurrency:
+  group: cloudflare-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  WRANGLER_SEND_METRICS: 'false'
+
+jobs:
+  build-web:
+    uses: ./.github/workflows/build-web.yml
+    with:
+      base-url: /
+      proxy-url: ${{ vars.NUXT_PUBLIC_PROXY_URL || '' }}
+
+  verify-deployment:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: deploy/package-lock.json
+      - run: npm ci --prefix deploy
+      - name: Test deployment configuration and Pages project setup
+        run: npm test --prefix deploy
+      - name: Validate Worker bundle without Cloudflare credentials
+        run: |
+          cp worker/wrangler.toml.example worker/wrangler.ci.toml
+          deploy/node_modules/.bin/wrangler deploy --config worker/wrangler.ci.toml --dry-run --outdir "$RUNNER_TEMP/worker-bundle"
+
+  deploy:
+    needs: [build-web, verify-deployment]
+    # Forks/PRs never receive deploy credentials. Manual runs also require the
+    # configured production branch, but do not require the auto-deploy opt-in.
+    if: >-
+      github.event_name != 'pull_request' &&
+      github.ref == format('refs/heads/{0}', vars.DEPLOY_BRANCH || github.event.repository.default_branch) &&
+      (github.event_name == 'workflow_dispatch' || vars.CLOUDFLARE_DEPLOY_ENABLED == 'true')
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment:
+      name: cloudflare-production
+    env:
+      DEPLOY_TARGET: ${{ inputs.target || vars.CLOUDFLARE_DEPLOY_TARGET || 'all' }}
+      PRODUCTION_BRANCH: ${{ vars.DEPLOY_BRANCH || github.event.repository.default_branch }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_WORKER_NAME: ${{ vars.CLOUDFLARE_WORKER_NAME || 'modeltrace-relay' }}
+      CLOUDFLARE_PAGES_PROJECT_NAME: ${{ vars.CLOUDFLARE_PAGES_PROJECT_NAME }}
+      CLOUDFLARE_RATE_LIMIT_NAMESPACE_ID: ${{ vars.CLOUDFLARE_RATE_LIMIT_NAMESPACE_ID || '1001' }}
+      SITE_ORIGIN: ${{ vars.SITE_ORIGIN }}
+      # Use the actual build input, not an environment-level override after build.
+      NUXT_PUBLIC_PROXY_URL: ${{ needs.build-web.outputs.proxy-url }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: deploy/package-lock.json
+      - name: Validate configuration and render isolated Worker config
+        id: config
+        run: node deploy/cloudflare/config.mjs
+      - name: Install pinned deployment CLI
+        run: npm ci --prefix deploy
+      - name: Ensure Pages project exists with the correct production branch
+        if: steps.config.outputs.pages == 'true'
+        run: node deploy/cloudflare/pages-project.mjs
+      - name: Deploy Worker
+        if: steps.config.outputs.worker == 'true'
+        run: deploy/node_modules/.bin/wrangler deploy --config worker/wrangler.ci.toml
+      - name: Download tested static site
+        if: steps.config.outputs.pages == 'true'
+        uses: actions/download-artifact@v4
+        with:
+          name: modeltrace-web
+          path: site
+      - name: Deploy Pages production site
+        if: steps.config.outputs.pages == 'true'
+        run: >-
+          deploy/node_modules/.bin/wrangler pages deploy site
+          --project-name "$CLOUDFLARE_PAGES_PROJECT_NAME"
+          --branch "$PRODUCTION_BRANCH"
+          --commit-hash "$GITHUB_SHA"
+          --commit-dirty=true
+      - name: Deployment summary
+        env:
+          DEPLOYED_WORKER: ${{ steps.config.outputs.worker }}
+          DEPLOYED_PAGES: ${{ steps.config.outputs.pages }}
+          DEPLOYED_ORIGIN: ${{ steps.config.outputs.site_origin }}
+        run: |
+          {
+            echo '## Cloudflare production deployment'
+            printf '\n- Commit: `%s`\n' "$GITHUB_SHA"
+            printf -- '- Worker deployed: `%s`\n' "$DEPLOYED_WORKER"
+            printf -- '- Pages deployed: `%s`\n' "$DEPLOYED_PAGES"
+            printf -- '- Site origin: %s\n' "$DEPLOYED_ORIGIN"
+            printf -- '- Proxy URL: %s\n' "${NUXT_PUBLIC_PROXY_URL:-disabled}"
+          } >> "$GITHUB_STEP_SUMMARY"

@@ -15,7 +15,7 @@ python start.py
 
 ## Nuxt 3 新版前端（web/）
 
-> 自行部署时，建议创建自己的 Worker，并替换 `.github/workflows/pages.yml` 或打包环境变量中的 `NUXT_PUBLIC_PROXY_URL`，不要将仓库示例中的个人 Worker 当作公共代理服务。不要提交真实 API Key 或本地 Worker 配置。
+> 推荐使用 [GitHub Actions 一键部署 Cloudflare Worker + Pages](deploy/README.md)：通过 GitHub Secrets / Variables 配置账户与域名，无需修改工作流中的地址。请创建自己的 Worker，不要将仓库历史示例中的个人 Worker 当作公共代理服务。不要提交真实 API Key 或本地 Worker 配置。
 
 `web/` 是基于 Nuxt 3（纯 SPA，`ssr: false`）+ Tailwind CSS + shadcn-vue 重新设计的前端；默认在浏览器本地运行，不依赖后端。另有用户明确同意后才启用的可选 Cloudflare Worker 代理：
 
@@ -53,6 +53,14 @@ NUXT_PUBLIC_PROXY_URL=https://<你的-worker>.workers.dev/v1 npm run generate
 
 Worker 不要求配置上游域名白名单，可访问任意公网 HTTPS OpenAI-compatible Endpoint（API 根路径必须以 `/v1` 结尾）。它只代理 `/v1/chat/completions`、`/v1/responses` 的单条非流式 ModelTrace 数值挑战，限制请求/响应体积、输出长度和每 IP 请求频率，并拒绝 IP 字面量、常见本地域名、重定向、未知路径与附加工具参数。移除上游白名单会扩大滥用与 SSRF 风险；域名仍可能通过 DNS 指向特殊地址，因此上线前应配置 Cloudflare WAF、每日预算/告警和更严格的账户级限流。未配置 `NUXT_PUBLIC_PROXY_URL` 时，直连失败会显示错误详情，不会展示代理或终端入口。
 
+### GitHub Actions → Cloudflare Worker / Pages
+
+已提供 `.github/workflows/cloudflare.yml`：PR / 普通分支只做测试、Worker dry-run 和静态构建；开启自动部署后，生产分支 push 会部署 Worker 和 Cloudflare Pages。也可以手动选择 `all`、`worker`、`pages`。首次发布自动创建不存在的 Pages Direct Upload 项目，并校验生产分支；Worker 的 `SITE_ORIGIN` 随部署同步，强制限流绑定保留。
+
+在 GitHub 仓库中添加 Secrets `CLOUDFLARE_API_TOKEN`、`CLOUDFLARE_ACCOUNT_ID`，以及 Variables `CLOUDFLARE_PAGES_PROJECT_NAME`、`SITE_ORIGIN`、`NUXT_PUBLIC_PROXY_URL`、`CLOUDFLARE_DEPLOY_ENABLED=true`。生产分支默认使用仓库默认分支，可用 `DEPLOY_BRANCH` 覆盖；Worker 名称默认 `modeltrace-relay`。然后运行 **Actions → Deploy Cloudflare Worker and Pages**。
+
+静态构建已抽为可复用 workflow，后续迁移 EdgeOne Pages 不需要改造前端。**完整 Token 权限、配置示例、自定义域名、单目标发布及 EdgeOne 扩展方式见 [部署说明](deploy/README.md)。**
+
 ### Nginx 纯静态部署包
 
 ```bash
@@ -84,11 +92,13 @@ npm run test:static
 
 ## GitHub Pages
 
-`static/index.html` 仍保留为旧版手动测试页面。GitHub Actions 的 `.github/workflows/pages.yml` 现已改为将 Nuxt 前端 `web/.output/public` 部署到 GitHub Pages；构建时设置 `NUXT_APP_BASE_URL=/ModelTrace/` 和 `NUXT_PUBLIC_PROXY_URL=https://llm-iq-proxy.hanmo5888.workers.dev/v1`。指纹库加载路径会跟随 baseURL。工作流在 `main` 分支推送或手动触发时生效。
+`static/index.html` 仍保留为旧版手动测试页面。`.github/workflows/pages.yml` 保留 GitHub Pages 发布，并复用 `build-web.yml` 构建 Nuxt 前端。工作流在 `main` 分支相关文件推送或手动触发时生效；设置 Repository Variable `GH_PAGES_ENABLED=false` 可关闭它，不影响 Cloudflare 部署。
 
-本仓库的 Pages 地址为 `https://hanmo123.github.io/ModelTrace/`；需在 GitHub 仓库 Settings → Pages 中将部署来源设为 **GitHub Actions**。
+默认站点路径为 `/<仓库名>/`（`*.github.io` 仓库为 `/`），可通过 `GH_PAGES_BASE_URL` 覆盖；自定义根域名请填 `/`。指纹库加载路径会跟随 baseURL。代理通过 **`GH_PAGES_PROXY_URL`** 配置，留空则仅直连，不再内置个人 Worker 地址。这个变量与 Cloudflare 的 `NUXT_PUBLIC_PROXY_URL` 分开，避免不同站点误用仅授权单一来源的 Worker。
 
-**部署前需同步 Worker 来源**：Pages 的 Origin 是 `https://hanmo123.github.io`，不包含 `/ModelTrace/`。先在本地 `worker/wrangler.toml` 把 `SITE_ORIGIN` 改为该 Origin，再执行 `npx wrangler@latest deploy --config worker/wrangler.toml`。如通过 Nginx 部署，则填实际站点 Origin；仅本地测试时可用 `http://localhost:3002`。静态页面部署不会自动修改 Worker 来源，配置不匹配会返回 403。Worker 当前只支持一个来源；无需配置上游域名白名单。
+本仓库的 GitHub Pages 地址为 `https://hanmo123.github.io/ModelTrace/`；需在 GitHub 仓库 Settings → Pages 中将部署来源设为 **GitHub Actions**。
+
+**部署前需同步 Worker 来源**：GitHub Pages 的 Origin 是 `https://hanmo123.github.io`，不包含 `/ModelTrace/`。可设置 `SITE_ORIGIN` 并手动运行 Cloudflare workflow 的 `worker` 目标，或在本地修改 `worker/wrangler.toml` 后手动发布。仅发布静态页面不会自动修改 Worker 来源，配置不匹配会返回 403。Worker 当前只支持一个来源；若同时保留 Cloudflare Pages 和 GitHub Pages 的代理功能，需要分别部署 Worker。
 
 ## 使用
 

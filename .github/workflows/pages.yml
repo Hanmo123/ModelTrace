@@ -3,6 +3,11 @@ name: Deploy ModelTrace web to GitHub Pages
 on:
   push:
     branches: [main]
+    paths:
+      - 'web/**'
+      - 'worker/**'
+      - '.github/workflows/pages.yml'
+      - '.github/workflows/build-web.yml'
   workflow_dispatch:
 
 permissions:
@@ -15,35 +20,33 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  build-web:
+    if: vars.GH_PAGES_ENABLED != 'false'
+    uses: ./.github/workflows/build-web.yml
+    with:
+      base-url: ${{ vars.GH_PAGES_BASE_URL || (endsWith(github.event.repository.name, '.github.io') && '/' || format('/{0}/', github.event.repository.name)) }}
+      proxy-url: ${{ vars.GH_PAGES_PROXY_URL || '' }}
+      artifact-name: modeltrace-github-pages
+
   deploy:
+    needs: build-web
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-          cache: npm
-          cache-dependency-path: web/package-lock.json
       - name: Configure Pages
         uses: actions/configure-pages@v5
-      - name: Generate Nuxt SPA
-        working-directory: web
-        env:
-          NUXT_APP_BASE_URL: /ModelTrace/
-          NUXT_PUBLIC_PROXY_URL: https://llm-iq-proxy.hanmo5888.workers.dev/v1
-        run: |
-          npm ci
-          npm run generate
-          touch .output/public/.nojekyll
+      - name: Download static site
+        uses: actions/download-artifact@v4
+        with:
+          name: modeltrace-github-pages
+          path: site
       - name: Upload site
         uses: actions/upload-pages-artifact@v3
         with:
-          path: web/.output/public
+          path: site
       - name: Deploy
         id: deployment
         uses: actions/deploy-pages@v4
