@@ -1,11 +1,14 @@
 import {
   encodePresets,
+  invalidatedModelRuns,
+  providerTargets,
   LEGACY_PRESET_STORAGE_KEY,
   loadPresets,
   PRESET_STORAGE_KEY,
   type ProviderInput,
   type ProviderPreset,
 } from "@/lib/providers";
+import { useDirectRouting } from "./useDirectRouting";
 
 // Keep the single-request type available to the runner / optional terminal tools.
 export { presetLabel } from "@/lib/providers";
@@ -19,6 +22,7 @@ export type {
 } from "@/lib/providers";
 
 export function usePresets() {
+  const { clearDirectFailures } = useDirectRouting();
   const storageError = useState<string | null>(
     "modeltrace:presets:storage-error",
     () => null,
@@ -62,6 +66,10 @@ export function usePresets() {
   }
 
   function updatePreset(id: string, input: ProviderInput) {
+    const previous = presets.value.find((item) => item.id === id);
+    // Includes credential changes without duplicating keys in the route cache.
+    // Renames/reordering preserve the marks; only affected models are reset.
+    if (previous) clearDirectFailures(invalidatedModelRuns(previous, input));
     presets.value = presets.value.map((item) =>
       item.id === id ? { ...copy(input), id } : item,
     );
@@ -69,6 +77,9 @@ export function usePresets() {
   }
 
   function removePreset(id: string) {
+    const previous = presets.value.find((item) => item.id === id);
+    if (previous)
+      clearDirectFailures(providerTargets(previous).map((target) => target.id));
     presets.value = presets.value.filter((item) => item.id !== id);
     persist();
   }

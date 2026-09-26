@@ -8,6 +8,8 @@ import {
 } from "@/lib/fingerprint";
 import type { EndpointPreset } from "@/composables/usePresets";
 import { createTaskQueue } from "../lib/task-queue";
+import { classifyRequestError } from "../lib/direct-routing";
+import { useDirectRouting } from "./useDirectRouting";
 
 export type StepState =
   "pending" | "working" | "done" | "invalid" | "error" | "skipped";
@@ -16,6 +18,7 @@ export type RunStatus = "running" | "success" | "failed";
 export interface PresetRunState {
   status: RunStatus;
   transport: "direct" | "proxy";
+  directNetworkFailed: boolean;
   earlyStopped: boolean;
   steps: StepState[];
   challenges: Challenge[];
@@ -48,6 +51,8 @@ function describeError(error: unknown, apiKey: string): string {
 
 export function useApiTest() {
   const { bank } = useBank();
+  const { isDirectBlocked, markDirectFailure, clearDirectFailures } =
+    useDirectRouting();
   const runStates = useState<Record<string, PresetRunState>>(
     "modeltrace:run-states",
     () => ({}),
@@ -77,6 +82,15 @@ export function useApiTest() {
     input: EndpointPreset,
     proxyBaseURL?: string,
   ): Promise<PresetRunState> {
+    // Explicit single-model tests retain their existing selected transport.
+    return enqueuePreset(input, proxyBaseURL, false);
+  }
+
+  function enqueuePreset(
+    input: EndpointPreset,
+    proxyBaseURL: string | undefined,
+    directFirst: boolean,
+  ): Promise<PresetRunState> {
     if (!bank.value) return Promise.reject(new Error("指纹库尚未加载完成"));
     // Freeze connection, model and bank when enqueued, not when a slot opens.
     const preset = { ...input };
@@ -85,7 +99,7 @@ export function useApiTest() {
       queuedIds.value = [...queuedIds.value, preset.id];
     return testQueue.enqueue(preset.id, () => {
       queuedIds.value = queuedIds.value.filter((id) => id !== preset.id);
-      return executePreset(preset, proxyBaseURL, currentBank);
+      return executePreset(preset, proxyBaseURL, currentBank, directFirst);
     });
   }
 
@@ -93,12 +107,19 @@ export function useApiTest() {
     preset: EndpointPreset,
     proxyBaseURL: string | undefined,
     currentBank: NonNullable<typeof bank.value>,
+    directFirst: boolean,
   ): Promise<PresetRunState> {
     const challenges = generateChallenges(MAX_ATTEMPTS);
     // 必须通过代理更新，不能修改放入 useState 前的原始对象。
     const state = reactive<PresetRunState>({
       status: "running",
-      transport: proxyBaseURL ? "proxy" : "direct",
+      // A cached failure never grants proxy permission. A direct-only batch
+      // still tries direct, and can clear an old failure after recovery.
+      transport:
+        proxyBaseURL && (!directFirst || isDirectBlocked(preset))
+          ? "proxy"
+          : "direct",
+      directNetworkFailed: false,
       earlyStopped: false,
       steps: challenges.map(() => "pending"),
       challenges,
@@ -115,17 +136,57 @@ export function useApiTest() {
     runStates.value = { ...runStates.value, [preset.id]: state };
 
     try {
-      const openai = createOpenAI({
-        baseURL: proxyBaseURL || preset.baseUrl,
-        apiKey: preset.apiKey,
-        ...(proxyBaseURL
-          ? { headers: { "X-ModelTrace-Endpoint": preset.baseUrl } }
-          : {}),
-      });
-      const model =
-        preset.apiType === "responses"
+      function modelFor(proxyURL?: string) {
+        const openai = createOpenAI({
+          baseURL: proxyURL || preset.baseUrl,
+          apiKey: preset.apiKey,
+          ...(proxyURL
+            ? { headers: { "X-ModelTrace-Endpoint": preset.baseUrl } }
+            : {}),
+        });
+        return preset.apiType === "responses"
           ? openai.responses(preset.model)
           : openai.chat(preset.model);
+      }
+      let model = modelFor(
+        state.transport === "proxy" ? proxyBaseURL : undefined,
+      );
+
+      async function requestChallenge(challenge: Challenge, index: number) {
+        const call = () =>
+          generateText({
+            model,
+            prompt: challenge.prompt,
+            temperature: preset.temperature ?? undefined,
+            // Don't retry a failed direct probe before switching routes. The
+            // fallback reuses this exact challenge, inside the same queue slot.
+            maxRetries: directFirst && state.transport === "direct" ? 0 : 1,
+            abortSignal: AbortSignal.timeout(180_000),
+          });
+        try {
+          const response = await call();
+          if (
+            directFirst &&
+            state.transport === "direct" &&
+            isDirectBlocked(preset)
+          )
+            clearDirectFailures([preset.id]);
+          return response;
+        } catch (error) {
+          if (!directFirst || state.transport !== "direct") throw error;
+          const { kind } = classifyRequestError(error);
+          if (kind === "http" && isDirectBlocked(preset))
+            clearDirectFailures([preset.id]);
+          if (kind !== "network") throw error;
+          state.directNetworkFailed = true;
+          markDirectFailure(preset);
+          if (!proxyBaseURL) throw error;
+          state.transport = "proxy";
+          state.message = `直连网络失败，已记录标记，正在通过已授权的代理重试挑战 ${index + 1}`;
+          model = modelFor(proxyBaseURL);
+          return call();
+        }
+      }
 
       for (
         let index = 0;
@@ -136,13 +197,7 @@ export function useApiTest() {
         state.steps[index] = "working";
         state.message = `正在请求挑战 ${index + 1}，已有 ${state.validCount}/${TARGET_VALID} 份有效回答`;
         try {
-          const { text } = await generateText({
-            model,
-            prompt: challenge.prompt,
-            temperature: preset.temperature ?? undefined,
-            maxRetries: 1,
-            abortSignal: AbortSignal.timeout(180_000),
-          });
+          const { text } = await requestChallenge(challenge, index);
           state.outputs[index] = text;
           state.parsedCounts[index] = parseNumbers(text).length;
           const minimum = Math.max(
@@ -176,14 +231,14 @@ export function useApiTest() {
           state.steps[index] = "error";
           state.stepErrors[index] = describeError(error, preset.apiKey);
           state.errors.push(`挑战 ${index + 1}：${state.stepErrors[index]}`);
-          const statusCode = (error as { statusCode?: number } | null)
-            ?.statusCode;
+          const { kind, statusCode } = classifyRequestError(error);
+          if (kind === "network" && state.transport === "direct")
+            state.directNetworkFailed = true;
           if (
             statusCode === 401 ||
             statusCode === 403 ||
-            /failed to fetch|networkerror|load failed|cors/i.test(
-              state.stepErrors[index]!,
-            )
+            kind === "network" ||
+            kind === "aborted"
           )
             break;
         }
@@ -219,7 +274,7 @@ export function useApiTest() {
     batchRunning.value = true;
     try {
       return await Promise.all(
-        targets.map((preset) => runPreset(preset, proxyBaseURL)),
+        targets.map((preset) => enqueuePreset(preset, proxyBaseURL, true)),
       );
     } finally {
       batchRunning.value = false;

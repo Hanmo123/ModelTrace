@@ -45,6 +45,14 @@ const {
   clearRun,
 } = useApiTest();
 const targets = computed(() => presets.value.flatMap(providerTargets));
+const {
+  isDirectBlocked,
+  clearDirectFailures,
+  storageError: routingStorageError,
+} = useDirectRouting();
+const directBlocked = computed(
+  () => new Set(targets.value.filter(isDirectBlocked).map((target) => target.id)),
+);
 const queued = computed(() => new Set(queuedIds.value));
 const busyProviders = computed(
   () =>
@@ -121,6 +129,11 @@ function clearResult(id: string) {
   clearRun(id);
   clearTerminal(id);
 }
+function resetDirect(target: ModelTarget) {
+  if (isBusy(target.id) || batchRunning.value || proxyOpen.value) return;
+  clearDirectFailures([target.id]);
+  toast.info("已重置直连标记，下次批量测试将重新尝试直连。");
+}
 function save(input: ProviderInput) {
   if (editing.value) {
     if (locked(editing.value.id)) return;
@@ -188,11 +201,8 @@ function isNetworkFailure(id: string) {
   const state = runStates.value[id];
   return (
     state?.status === "failed" &&
-    state.errors.some((message) =>
-      /failed to fetch|networkerror|network error|load failed|cors/i.test(
-        message,
-      ),
-    )
+    state.transport === "direct" &&
+    state.directNetworkFailed
   );
 }
 function openTerminal(target: ModelTarget) {
@@ -283,9 +293,11 @@ async function executeTests(
         </Button>
       </div>
     </div>
-    <Alert v-if="storageError || bankError" variant="destructive"
+    <Alert
+      v-if="storageError || bankError || routingStorageError"
+      :variant="storageError || bankError ? 'destructive' : 'default'"
       ><AlertDescription>{{
-        storageError || bankError
+        storageError || bankError || routingStorageError
       }}</AlertDescription></Alert
     >
     <div
@@ -324,6 +336,7 @@ async function executeTests(
           :selected-id="selectedId"
           :runs="runStates"
           :queued="queued"
+          :direct-blocked="directBlocked"
           :disabled="!bank || proxyOpen || batchRunning"
           :locked="locked(preset.id)"
           @select="selectTarget"
@@ -337,8 +350,8 @@ async function executeTests(
         />
         <p class="px-1 text-xs leading-relaxed text-muted-foreground">
           每个模型最多 3 题，归因概率达到 99% 即停止后续调用。单个与批量测试共用
-          2 个并发名额，其他模型自动排队。测试会消耗 API
-          额度；直连需要服务商允许跨域（CORS），也可在测试前授权代理。
+          2 个并发名额，其他模型自动排队。批量测试优先直连；网络/CORS
+          失败会按模型记住，并在已授权时回退代理。重试同一道题可能额外消耗 API 额度。
         </p>
       </section>
       <section
@@ -358,7 +371,9 @@ async function executeTests(
             !!proxyBaseURL && !proxyAllowed && isNetworkFailure(selected.id)
           "
           :queued="queued.has(selected.id)"
+          :direct-blocked="directBlocked.has(selected.id)"
           :disabled="!bank || proxyOpen || batchRunning || isBusy(selected.id)"
+          @reset-direct="resetDirect(selected)"
           @test="test(selected)"
           @terminal="openTerminal(selected)"
           @proxy="test(selected)"
@@ -377,23 +392,35 @@ async function executeTests(
     <AlertDialog v-model:open="proxyOpen">
       <AlertDialogContent>
         <AlertDialogHeader>
-          <AlertDialogTitle>是否通过 Cloudflare 代理测试？</AlertDialogTitle>
+          <AlertDialogTitle>{{
+            pendingTest?.batch
+              ? "是否允许直连失败后使用代理？"
+              : "是否通过 Cloudflare 代理测试？"
+          }}</AlertDialogTitle>
           <AlertDialogDescription>
             即将{{ pendingTest?.batch ? "批量测试" : "测试" }}
             {{ pendingTest?.targets.length || 0 }} 个模型（{{
               pendingProviderCount
             }}
-            个服务商）。 若同意，你的 API Key、模型 ID 和挑战提示词将发送到
+            个服务商）。
+            <template v-if="pendingTest?.batch">
+              批量测试优先直连每个模型；发生网络/CORS 错误，或已有直连失败标记时，才会使用代理。
+            </template>
+            使用代理时，你的 API Key、模型 ID 和挑战提示词将发送到
             {{ proxyBaseURL }}，再由该服务器请求服务商。
-            授权会在此浏览器记住，后续单个和批量测试均直接使用此代理，不再询问；可在测试结束后撤销授权。
-            这不再是纯浏览器直连；请仅在信任代理运营方时继续。
+            授权会在此浏览器记住，后续单模型测试直接使用代理，批量测试仍优先直连，不再询问；可在测试结束后撤销授权。
+            请仅在信任代理运营方时继续。
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter
           ><AlertDialogCancel @click="declineProxy"
             >仅本次直连</AlertDialogCancel
           ><AlertDialogAction @click="consentProxy"
-            >同意并通过代理测试</AlertDialogAction
+            >{{
+              pendingTest?.batch
+                ? "同意并允许代理回退"
+                : "同意并通过代理测试"
+            }}</AlertDialogAction
           ></AlertDialogFooter
         >
       </AlertDialogContent>

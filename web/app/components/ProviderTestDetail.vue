@@ -22,10 +22,11 @@ defineProps<{
   terminal?: TerminalSession;
   terminalAvailable: boolean;
   proxyAvailable: boolean;
+  directBlocked: boolean;
   queued: boolean;
   disabled: boolean;
 }>();
-defineEmits<{ test: []; terminal: []; proxy: [] }>();
+defineEmits<{ test: []; terminal: []; proxy: []; resetDirect: [] }>();
 const labels: Record<StepState, string> = {
   pending: "等待",
   working: "请求中",
@@ -83,7 +84,13 @@ const labels: Record<StepState, string> = {
           · 密钥已配置
           <span v-if="run">
             ·
-            {{ run.transport === "proxy" ? "服务端代理" : "浏览器直连" }}</span
+            {{
+              run.transport === "proxy"
+                ? run.directNetworkFailed
+                  ? "直连失败后转代理"
+                  : "服务端代理"
+                : "浏览器直连"
+            }}</span
           >
         </p>
       </div>
@@ -124,6 +131,23 @@ const labels: Record<StepState, string> = {
       </div>
     </div>
 
+    <Alert v-if="directBlocked">
+      <AlertDescription class="flex flex-col gap-2">
+        <p>
+          已记住此模型的直连网络/CORS 失败。授权代理后，后续批量测试将跳过直连。
+          标记保存在当前浏览器；可重置标记或修改连接配置后重新尝试。
+        </p>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          class="self-start"
+          :disabled="disabled"
+          @click="$emit('resetDirect')"
+          >重置直连标记</Button
+        >
+      </AlertDescription>
+    </Alert>
     <div
       v-if="run || queued"
       aria-label="调用进度"

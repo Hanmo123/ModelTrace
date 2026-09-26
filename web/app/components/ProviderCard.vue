@@ -33,6 +33,7 @@ const props = defineProps<{
   selectedId: string | null;
   runs: Record<string, PresetRunState>;
   queued: ReadonlySet<string>;
+  directBlocked: ReadonlySet<string>;
   disabled: boolean;
   locked: boolean;
 }>();
@@ -196,6 +197,12 @@ function selectProvider() {
               <span>{{
                 row.target.apiType === "responses" ? "Responses" : "Chat"
               }}</span>
+              <Badge
+                v-if="directBlocked.has(row.target.id)"
+                variant="outline"
+                title="已记住该模型的直连失败，已授权的批量测试将直接使用代理"
+                >直连不可用</Badge
+              >
               <template v-if="row.run?.result">
                 <ArrowRight class="size-3 shrink-0" />
                 <span
