@@ -165,7 +165,7 @@ watch(
                     :class="
                       cn(
                         'tnum',
-                        parsedCounts[index] >= minimums[index]
+                        (parsedCounts[index] ?? 0) >= (minimums[index] ?? 80)
                           ? 'text-emerald-600 dark:text-emerald-400'
                           : '',
                       )
@@ -235,7 +235,7 @@ watch(
                 >
                 <Progress
                   :model-value="
-                    Math.min((parsedCounts[index] / minimums[index]) * 100, 100)
+                    Math.min(((parsedCounts[index] ?? 0) / (minimums[index] ?? 80)) * 100, 100)
                   "
                   class="h-1 flex-1"
                 />
@@ -243,7 +243,7 @@ watch(
                   :class="
                     cn(
                       'tnum w-16 shrink-0 text-right text-[11px]',
-                      parsedCounts[index] >= minimums[index]
+                      (parsedCounts[index] ?? 0) >= (minimums[index] ?? 80)
                         ? 'text-emerald-600 dark:text-emerald-400'
                         : 'text-muted-foreground',
                     )

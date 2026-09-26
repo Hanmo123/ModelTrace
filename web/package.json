@@ -3,15 +3,21 @@
   "private": true,
   "type": "module",
   "packageManager": "npm@12.0.2",
+  "engines": {
+    "node": "^22.19.0 || ^24.11.0 || >=26.0.0"
+  },
   "scripts": {
     "dev": "nuxt dev",
     "build": "nuxt build",
     "generate": "nuxt generate",
+    "typecheck": "nuxt prepare && vue-tsc -b --noEmit",
     "package:static": "node scripts/package-static.mjs",
     "preview": "nuxt preview --port 4200",
     "test:auto": "npm run test:providers && node tests/api-runner-test.mjs && node tests/auto-test.mjs && node tests/multi-model-test.mjs",
     "test:providers": "node --test tests/providers-test.mjs",
+    "test:core": "node --test tests/core-test.mjs",
     "test:multi": "node tests/multi-model-test.mjs",
+    "test:analytics": "node tests/analytics-test.mjs",
     "test:terminal": "node tests/terminal-proxy-test.mjs",
     "test:proxy": "node tests/proxy-consent-test.mjs",
     "test:static": "node tests/static-package-test.mjs",
@@ -26,11 +32,12 @@
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "lucide-vue-next": "^0.525.0",
-    "nuxt": "^3.17.5",
+    "nuxt": "^4.5.2",
+    "nuxt-gtag": "^5.0.0",
     "reka-ui": "^2.10.5",
     "tailwind-merge": "^2.6.0",
-    "vue": "^3.5.13",
-    "vue-router": "^4.5.0",
+    "vue": "^3.5.40",
+    "vue-router": "^5.2.0",
     "vue-sonner": "^1.3.2"
   },
   "devDependencies": {
@@ -39,7 +46,8 @@
     "shadcn-nuxt": "^2.1.0",
     "tailwindcss": "^3.4.17",
     "tailwindcss-animate": "^1.0.7",
-    "typescript": "^5.8.3"
+    "typescript": "^5.8.3",
+    "vue-tsc": "^3.3.11"
   },
   "allowScripts": {
     "esbuild@0.28.2": true,

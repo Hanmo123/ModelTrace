@@ -40,6 +40,8 @@ Pages 项目不必提前创建：工作流先查询项目，仅在返回 404 时
 | `NUXT_PUBLIC_PROXY_URL` | `https://modeltrace-relay.my-account.workers.dev/v1` | **公开**的代理地址，以 `/v1` 结尾；`all` 必填，`pages` 可留空禁用代理，`worker` 可省略 |
 | `CLOUDFLARE_RATE_LIMIT_NAMESPACE_ID` | 默认：`1001` | 必须是正整数；同账户内需要相互隔离的 Worker 使用不同 namespace |
 | `GH_PAGES_ENABLED` | `false` | 如不再使用原 GitHub Pages，可关闭其独立发布流程 |
+| `NUXT_PUBLIC_GTAG_ID` | 默认：`G-R374H35YTH` | 公开的 GA4 Measurement ID；fork / 自行部署时可替换为自己的 ID |
+| `NUXT_PUBLIC_GTAG_ENABLED` | 默认：`true` | 设置 `false` 在构建时禁用 Google 统计；修改后需重新构建 |
 
 例如：
 
@@ -94,7 +96,7 @@ curl -i -X OPTIONS 'https://modeltrace-relay.my-account.workers.dev/v1/chat/comp
 
 | 文件 | 职责 |
 | --- | --- |
-| `.github/workflows/build-web.yml` | 可复用、无云凭据的静态构建：`npm ci`、API runner / Worker mock 测试、`npm run generate`、上传静态 artifact |
+| `.github/workflows/build-web.yml` | 可复用、无云凭据的静态构建：`npm ci`、Nuxt 4 类型检查、配置/队列/API runner/Worker mock 测试、`npm run generate`、Google 统计静态浏览器检查、上传 artifact |
 | `.github/workflows/cloudflare.yml` | PR / push CI、Worker dry-run、生产部署、单目标手动部署 |
 | `.github/workflows/pages.yml` | 保留的 GitHub Pages 发布，同样复用静态构建 |
 | `deploy/cloudflare/config.mjs` | 校验配置，从已跟踪模板生成隔离的 Worker CI 配置 |
@@ -118,14 +120,14 @@ npm run test:terminal
 NUXT_APP_BASE_URL=/ NUXT_PUBLIC_PROXY_URL= npm run generate
 ```
 
-CI 不调用真实 Cloudflare API，也不跑需要真实模型的测试；只有部署 job 才调用 Cloudflare。浏览器 E2E 仍可按根 README 在本地运行，未纳入本次部署门禁。静态 artifact `modeltrace-web` 保留 7 天，不含服务器运行时；源码位于 `web/.output/public`，下载后的 artifact 根目录直接是 `index.html` 等文件。
+CI 不调用真实 Cloudflare API，也不跑需要真实模型的测试；只有部署 job 才调用 Cloudflare。统计检查使用 Ubuntu runner 自带的 Chrome，对静态产物模拟生产域名与本地地址，拦截全部网络请求，不会产生真实 Google Analytics 访问。其他业务浏览器 E2E 仍可按根 README 在本地运行。静态 artifact `modeltrace-web` 保留 7 天，不含服务器运行时；源码位于 `web/.output/public`，下载后的 artifact 根目录直接是 `index.html` 等文件。
 
 ## 后续迁移到 EdgeOne Pages
 
 目前实现了 Cloudflare Worker / Cloudflare Pages 和原有 GitHub Pages 发布，**尚未加入 EdgeOne 的鉴权和上传步骤**。前端构建不依赖 Cloudflare：
 
 1. 在未来的 EdgeOne workflow 中通过 `uses: ./.github/workflows/build-web.yml` 调用构建，传入 `base-url: /` 和公开的 `proxy-url`。
-2. 用 `actions/download-artifact@v4` 下载 `modeltrace-web`，把整个目录交给 EdgeOne Pages 的官方上传流程即可；不需要 `nuxt build` 服务端产物或 Worker adapter。也可在 EdgeOne Git 构建中使用项目目录 `web`、命令 `npm ci && npm run generate`、输出目录 `.output/public`。
+2. 用 `actions/download-artifact@v4` 下载 `modeltrace-web`，把整个目录交给 EdgeOne Pages 的官方上传流程即可；不需要 `nuxt build` 服务端产物或 Worker adapter。也可在 EdgeOne Git 构建中使用项目目录 `web`、Node.js 22.19+（22.x）或 24.11+（24.x）、命令 `npm ci && npm run generate`、输出目录 `.output/public`。
 3. 保留 CF Worker 时，把 `SITE_ORIGIN` 改为 EdgeOne 的正式域名，把 `CLOUDFLARE_DEPLOY_TARGET` 改成 `worker`，再发布一次 Worker；`NUXT_PUBLIC_PROXY_URL` 可以不变。这样后续 push 不再向 CF Pages 上传。
 4. EdgeOne Preview 仍不会自动获得代理权限；SPA fallback / 自定义域名按 EdgeOne 托管配置处理。现有前端只有根页面。
 

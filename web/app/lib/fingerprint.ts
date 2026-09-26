@@ -113,7 +113,8 @@ function standardize(values: number[]): number[] {
 
 function dot(left: number[], right: number[]): number {
   let value = 0
-  for (let index = 0; index < left.length; index += 1) value += left[index] * right[index]
+  // Feature vectors from the unified bank have matching dimensions.
+  for (let index = 0; index < left.length; index += 1) value += left[index]! * right[index]!
   return value
 }
 
@@ -130,7 +131,7 @@ function subtractBasis(values: number[], basis?: number[][]): number[] {
   const output = values.slice()
   for (const vector of basis || []) {
     const projection = dot(output, vector)
-    for (let index = 0; index < output.length; index += 1) output[index] -= projection * vector[index]
+    for (let index = 0; index < output.length; index += 1) output[index] = output[index]! - projection * vector[index]!
   }
   return output
 }
@@ -177,7 +178,7 @@ function robustScoreCounts(counts: number[], bank: UnifiedBank): number[] {
   const artifact = bank.robust.hellinger
   const feature = hellingerFeature(counts)
   let projected = feature.map(
-    (value, index) => (value - artifact.feature_mean[index]) / artifact.feature_scale[index],
+    (value, index) => (value - artifact.feature_mean[index]!) / artifact.feature_scale[index]!,
   )
   projected = subtractBasis(projected, artifact.nuisance_basis)
   projected = normalized(projected)
@@ -189,7 +190,7 @@ function orderedBlockScores(numbers: number[], bank: UnifiedBank): number[] {
   const artifact = bank.robust.ordered_blocks!
   const feature = orderedBlockFeature(numbers)
   const standardizedFeature = feature.map(
-    (value, index) => (value - artifact.feature_mean[index]) / artifact.feature_scale[index],
+    (value, index) => (value - artifact.feature_mean[index]!) / artifact.feature_scale[index]!,
   )
   const unit = normalized(standardizedFeature)
   const environmentScores = (artifact.environment_centroids || []).map((centroids) =>
@@ -197,12 +198,12 @@ function orderedBlockScores(numbers: number[], bank: UnifiedBank): number[] {
   )
   const template = standardize(
     artifact.centroids.map((_, modelIndex) =>
-      Math.max(...environmentScores.map((scores) => scores[modelIndex])),
+      Math.max(...environmentScores.map((scores) => scores[modelIndex]!)),
     ),
   )
   const projected = normalized(subtractBasis(standardizedFeature, artifact.nuisance_basis))
   const nuisance = standardize(artifact.centroids.map((centroid) => dot(projected, centroid)))
-  return standardize(template.map((value, index) => 0.5 * value + 0.5 * nuisance[index]))
+  return standardize(template.map((value, index) => 0.5 * value + 0.5 * nuisance[index]!))
 }
 
 function robustScoreNumbers(numbers: number[], bank: UnifiedBank): number[] {
@@ -211,7 +212,7 @@ function robustScoreNumbers(numbers: number[], bank: UnifiedBank): number[] {
   const weight = artifact ? Number(artifact.weight || 0) : 0
   if (!artifact || weight === 0) return marginal
   const ordered = orderedBlockScores(numbers, bank)
-  return marginal.map((value, index) => (1 - weight) * value + weight * ordered[index])
+  return marginal.map((value, index) => (1 - weight) * value + weight * ordered[index]!)
 }
 
 function softmax(values: number[]): number[] {
@@ -226,10 +227,10 @@ function jsSimilarity(left: number[], right: number[]): number {
   const rightTotal = right.reduce((sum, value) => sum + value, 0) + ALPHA * DIMENSION
   const p = left.map((value) => value / leftTotal)
   const q = right.map((value) => (value + ALPHA) / rightTotal)
-  const midpoint = p.map((value, index) => (value + q[index]) / 2)
+  const midpoint = p.map((value, index) => (value + q[index]!) / 2)
   const divergence = (values: number[]) =>
     values.reduce(
-      (total, value, index) => total + (value ? value * Math.log(value / midpoint[index]) : 0),
+      (total, value, index) => total + (value ? value * Math.log(value / midpoint[index]!) : 0),
       0,
     )
   const js = (divergence(p) + divergence(q)) / 2
@@ -255,15 +256,16 @@ export function analyzeGlobalOutputs(outputs: AnalyzeInput[], bank: UnifiedBank)
   }
 
   const combinedScores = modelIds.map((_, modelIndex) =>
-    mean(valid.map((item) => item.scores[modelIndex])),
+    mean(valid.map((item) => item.scores[modelIndex]!)),
   )
   const calibrationKey = String(Math.min(valid.length, 3))
-  const beta = Number(bank.calibration[calibrationKey].beta)
+  const calibration = bank.calibration[calibrationKey]
+  if (!calibration) throw new Error(`指纹库缺少 ${calibrationKey} 份回答的校准参数。`)
+  const beta = Number(calibration.beta)
   const probabilities = softmax(combinedScores.map((value) => beta * value))
   const pooledCounts = Array.from({ length: DIMENSION }, (_, index) =>
-    valid.reduce((sum, item) => sum + item.counts[index], 0),
+    valid.reduce((sum, item) => sum + item.counts[index]!, 0),
   )
-  const modelEntries = Object.fromEntries(bank.models.map((model) => [model.id, model]))
   const familyOrder = [...new Set(bank.models.map((model) => model.family || 'models'))]
   const familyNames = Object.fromEntries(
     familyOrder.map((family) => [
@@ -271,15 +273,15 @@ export function analyzeGlobalOutputs(outputs: AnalyzeInput[], bank: UnifiedBank)
       bank.models.find((model) => (model.family || 'models') === family)?.family_name || family,
     ]),
   )
-  const results: ModelResult[] = modelIds
+  const results: ModelResult[] = bank.models
     .map((model, index) => ({
-      model,
-      display_name: modelEntries[model].display_name,
-      probability: probabilities[index],
-      profile_similarity: jsSimilarity(pooledCounts, modelEntries[model].counts),
-      score: combinedScores[index],
-      family: modelEntries[model].family || 'models',
-      family_name: familyNames[modelEntries[model].family || 'models'],
+      model: model.id,
+      display_name: model.display_name,
+      probability: probabilities[index]!,
+      profile_similarity: jsSimilarity(pooledCounts, model.counts),
+      score: combinedScores[index]!,
+      family: model.family || 'models',
+      family_name: familyNames[model.family || 'models']!,
       conditional_probability: 0,
     }))
     .sort((left, right) => right.probability - left.probability)
@@ -290,26 +292,28 @@ export function analyzeGlobalOutputs(outputs: AnalyzeInput[], bank: UnifiedBank)
     ]),
   )
   results.forEach((item) => {
-    item.conditional_probability = item.probability / familyProbabilities[item.family]
+    item.conditional_probability = item.probability / familyProbabilities[item.family]!
   })
+  const winner = results[0]
+  if (!winner) throw new Error('指纹库中没有可用模型。')
   const winningFamily = familyOrder.reduce((best, family) =>
-    familyProbabilities[family] > familyProbabilities[best] ? family : best,
+    familyProbabilities[family]! > familyProbabilities[best]! ? family : best,
   )
   return {
-    prediction: results[0].model,
-    prediction_name: results[0].display_name,
-    probability: results[0].probability,
+    prediction: winner.model,
+    prediction_name: winner.display_name,
+    probability: winner.probability,
     used_outputs: valid.length,
     results,
     diagnostics,
-    calibration: { queries: calibrationKey, beta, cv_accuracy: bank.calibration[calibrationKey].cv_accuracy },
+    calibration: { queries: calibrationKey, beta, cv_accuracy: calibration.cv_accuracy },
     family_prediction: winningFamily,
-    family_prediction_name: familyNames[winningFamily],
-    family_probability: familyProbabilities[winningFamily],
+    family_prediction_name: familyNames[winningFamily]!,
+    family_probability: familyProbabilities[winningFamily]!,
     family_probabilities: familyOrder.map((family) => ({
       family,
-      display_name: familyNames[family],
-      probability: familyProbabilities[family],
+      display_name: familyNames[family]!,
+      probability: familyProbabilities[family]!,
     })),
     method: '统一全局稳健数字指纹',
   }

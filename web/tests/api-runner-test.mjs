@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { build } from "esbuild";
 
 const output = await build({
-  entryPoints: ["composables/useApiTest.ts"],
+  entryPoints: ["app/composables/useApiTest.ts"],
   bundle: true,
   write: false,
   platform: "node",

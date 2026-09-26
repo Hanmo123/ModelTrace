@@ -5,7 +5,21 @@ export default defineNuxtConfig({
   runtimeConfig: {
     public: { proxyUrl: process.env.NUXT_PUBLIC_PROXY_URL || "" },
   },
-  modules: ["@nuxtjs/tailwindcss", "shadcn-nuxt"],
+  modules: ["@nuxtjs/tailwindcss", "shadcn-nuxt", "nuxt-gtag"],
+  gtag: {
+    enabled:
+      process.env.NODE_ENV === "production" &&
+      process.env.NUXT_PUBLIC_GTAG_ENABLED !== "false",
+    id: process.env.NUXT_PUBLIC_GTAG_ID || "G-R374H35YTH",
+    // The client plugin excludes local previews before loading Google's script.
+    initMode: "manual",
+    config: {
+      // Send one sanitized page_view from the client plugin, without duplicates.
+      send_page_view: false,
+      allow_google_signals: false,
+      allow_ad_personalization_signals: false,
+    },
+  },
   css: ["~/assets/css/tailwind.css"],
   app: {
     baseURL: process.env.NUXT_APP_BASE_URL || '/',
@@ -24,7 +38,7 @@ export default defineNuxtConfig({
   },
   shadcn: {
     prefix: "",
-    componentDir: "./components/ui",
+    componentDir: "@/components/ui",
   },
   tailwindcss: {
     cssPath: "~/assets/css/tailwind.css",

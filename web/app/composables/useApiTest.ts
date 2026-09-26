@@ -182,7 +182,7 @@ export function useApiTest() {
             statusCode === 401 ||
             statusCode === 403 ||
             /failed to fetch|networkerror|load failed|cors/i.test(
-              state.stepErrors[index],
+              state.stepErrors[index]!,
             )
           )
             break;

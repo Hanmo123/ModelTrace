@@ -11,18 +11,18 @@ function randomIndex(length: number): number {
   const buffer = new Uint32Array(1)
   do {
     crypto.getRandomValues(buffer)
-  } while (buffer[0] >= limit)
-  return buffer[0] % length
+  } while (buffer[0]! >= limit)
+  return buffer[0]! % length
 }
 
 function choose(values: string[]): string {
-  return values[randomIndex(values.length)]
+  return values[randomIndex(values.length)]!
 }
 
 function uniqueLengths(count: number): number[] {
   const available = Array.from({ length: 41 }, (_, index) => 292 + index)
   const output: number[] = []
-  while (output.length < count) output.push(available.splice(randomIndex(available.length), 1)[0])
+  while (output.length < count) output.push(available.splice(randomIndex(available.length), 1)[0]!)
   return output
 }
 

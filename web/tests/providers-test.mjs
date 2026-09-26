@@ -24,8 +24,8 @@ const {
   providerTargets,
   PRESET_STORAGE_KEY,
   LEGACY_PRESET_STORAGE_KEY,
-} = await moduleFrom("lib/providers.ts");
-const { createTaskQueue } = await moduleFrom("lib/task-queue.ts");
+} = await moduleFrom("app/lib/providers.ts");
+const { createTaskQueue } = await moduleFrom("app/lib/task-queue.ts");
 const model = (id, name = id, apiType = "chat") => ({
   id,
   model: name,

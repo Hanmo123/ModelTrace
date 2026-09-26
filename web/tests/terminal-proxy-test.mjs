@@ -8,7 +8,7 @@ import worker from "../../worker/src/index.mjs";
 const exec = promisify(execFile);
 // Bundle TypeScript independently of Nuxt so the command/parser can be exercised in Node.
 const output = await build({
-  entryPoints: ["lib/terminal-commands.ts"],
+  entryPoints: ["app/lib/terminal-commands.ts"],
   bundle: true,
   write: false,
   platform: "node",

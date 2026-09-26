@@ -13,20 +13,23 @@ python start.py
 
 页面地址为 `http://127.0.0.1:7860/`。
 
-## Nuxt 3 新版前端（web/）
+## Nuxt 4 新版前端（web/）
 
 > 推荐使用 [GitHub Actions 一键部署 Cloudflare Worker + Pages](deploy/README.md)：通过 GitHub Secrets / Variables 配置账户与域名，无需修改工作流中的地址。请创建自己的 Worker，不要将仓库历史示例中的个人 Worker 当作公共代理服务。不要提交真实 API Key 或本地 Worker 配置。
 
-`web/` 是基于 Nuxt 3（纯 SPA，`ssr: false`）+ Tailwind CSS + shadcn-vue 重新设计的前端；默认在浏览器本地运行，不依赖后端。另有用户明确同意后才启用的可选 Cloudflare Worker 代理：
+`web/` 是基于 Nuxt 4（纯 SPA，`ssr: false`）+ Tailwind CSS + shadcn-vue 重新设计的前端；默认在浏览器本地运行，不依赖后端。另有用户明确同意后才启用的可选 Cloudflare Worker 代理：
 
 - **API 自动检测**：基于 [AI SDK](https://ai-sdk.dev/)（`ai` + `@ai-sdk/openai`），浏览器直连目标 Endpoint，默认使用 OpenAI **Chat Completions**，也可在配置中选择 **Responses API**。每组最多测试 3 条独立挑战，不再追加补测题；第一份有效回答返回后即展示初步归因。模型归因概率（未四舍五入）达到 99% 时立即成功检验并停止后续题目，否则继续剩余题目。
 - **多服务商 / 多模型管理**：每个服务商只需填写一次名称、Endpoint 和 API Key，可配置 1–50 个模型；每个模型独立选择 Chat Completions / Responses API。支持逐行添加、多行粘贴或逗号分隔批量添加，自动去重。左侧按服务商分组，模型行独立显示状态和归因摘要；右侧 61.8% 展示所选模型的结果、前 6 名候选、进度及原始回答。可测试单个模型、整个服务商或一键测全部；所有测试共用最多 2 个并发任务，其余排队，某个模型失败不阻塞其他模型。
 - **本地保存**：配置仅保存在当前浏览器的 localStorage（`modeltrace.presets.v2`），旧版单模型配置自动迁移为单模型服务商，成功写入新版后清理旧存储，不自动合并原有服务商。刷新后恢复配置，测试结果仅保留在本次页面会话中。API Key 以明文保存在 localStorage，直连测试时只发送给用户配置的 Endpoint，授权使用代理时也会经过所选 Worker；请勿在共享设备上保存敏感密钥。
 - **手动检测**：复制挑战发送给待测模型，任意一份回答达到长度阈值即在浏览器本地自动计算；继续填写其他回答后自动更新结果。切换手动/自动 Tab 不会清空输入或中断正在运行的自动测试。
 
+开发 / 构建需要 **Node.js 22.19+（22.x）或 24.11+（24.x，推荐 LTS）**，也支持 26+；不再支持 Node.js 20。应用源码位于 `web/app/`，`@/` 和 `~/` 均指向该目录；`public/`、配置、脚本和测试仍位于 `web/` 根目录。
+
 ```bash
 cd web
-npm install
+npm ci
+npm run typecheck # Nuxt 4 分离的应用 / 服务端 / 共享 / 构建配置类型检查
 npm run dev      # 开发：http://localhost:4200/
 npm run build    # 产出 .output
 npm run preview  # 构建后本地预览：http://localhost:4200/
@@ -34,6 +37,26 @@ npm run generate # 纯静态产物 .output/public，可部署到任意静态托�
 ```
 
 > 注意：Endpoint 填 API 根地址（例如 `https://api.openai.com/v1`），不要包含 `/chat/completions` 或 `/responses`。浏览器直连要求目标允许跨域（CORS）；HTTPS 页面一般无法请求普通 HTTP 端点。测试会消耗对应服务商的 API 额度。每次请求超时 180 秒，SDK 最多重试 1 次；401/403 鉴权错误或网络错误会提前结束该服务商的本轮测试。
+
+### Google Analytics 4 访问统计
+
+前端通过 [Nuxt Google Tag 模块 `nuxt-gtag`](https://nuxt.com/modules/gtag) 接入 **`G-R374H35YTH`**，不用手动复制 `<script>`。项目使用 Nuxt 4 和 `nuxt-gtag` 5.x。配置位于 `web/nuxt.config.ts`，初始化策略位于 `web/app/plugins/analytics.client.ts`。
+
+- `npm run build` / `npm run generate` 的生产产物默认启用；`npm run dev` 不启用。本地 `localhost`、`*.localhost`、IPv4/IPv6 回环地址上的生产预览也不会加载 Google 脚本，避免污染统计。
+- 页面挂载后由模块加载 `gtag.js`，每次加载仅主动发送一次 `page_view`；切换手动 / 自动 Tab 不重复计 PV。广告拦截器或 Google 不可达不会阻塞工具功能。
+- 应用不为服务商名称、Endpoint、API Key、模型 ID、提示词、回答和检测结果添加埋点。页面 URL 不含 query / hash，referrer 只保留来源 Origin；Google Signals 和广告个性化信号已关闭。
+- GA4 控制台的「增强型衡量」可能额外采集自动事件，建议关闭「表单互动」和「站内搜索」，并审阅数据流设置。Google 脚本仍是运行在页面上下文中的第三方代码，不等同于密钥隔离沙箱；对第三方脚本有严格要求时请关闭统计。生产站点会向 Google 发送访问统计并可能使用 Analytics Cookie，请按部署地区完善隐私说明及同意机制；统计与 Worker 代理授权是两回事。
+
+自行部署或 fork 时，可用构建环境变量替换统计 ID 或关闭统计（ID 是公开标识，不是 Secret）：
+
+```bash
+cd web
+NUXT_PUBLIC_GTAG_ID=G-你的统计ID npm run generate
+# 完全禁用统计：
+NUXT_PUBLIC_GTAG_ENABLED=false npm run generate
+```
+
+GitHub Actions 同样支持这两个 **Repository Variables**，Cloudflare / GitHub Pages 共用同一配置。纯静态站点修改后必须重新构建，单独修改托管平台的运行时变量不会更新已发布页面。上线后可通过浏览器 Network 的 `gtag/js` 请求和 GA4「实时」报告验收。本地回归可运行 `npm run generate && npm run test:analytics`（需要 Chrome）；测试会拦截全部网络请求，不会产生真实 Google 统计。
 
 ### 同一服务商测试多个模型
 
@@ -87,6 +110,8 @@ npm run package:static
 
 ```bash
 cd web
+npm run typecheck     # Nuxt 4 严格类型检查
+npm run test:core     # 指纹算法与旧版结果一致性、挑战生成（无需浏览器）
 npm run test:providers # 配置迁移、去重、结果失效范围及全局任务队列（无需浏览器）
 npm run build
 CHROME_PATH=/usr/bin/google-chrome npm run test:auto # 含多模型浏览器回归
@@ -160,7 +185,10 @@ rebuild_unified_bank.py  重建统一全局库
 data/               参考数据与指纹库
 static/             页面资源
 templates/          页面模板
-web/                Nuxt 3 纯前端新版界面（SPA + Tailwind + shadcn-vue）
+web/                Nuxt 4 纯前端新版界面（SPA + Tailwind + shadcn-vue）
+  app/              应用入口、页面、布局、组件、composables、lib、插件与样式
+  public/           原样发布的静态资源与指纹库
+  tests/            本地 mock 与浏览器回归测试
 ```
 
 ## 指纹库说明
