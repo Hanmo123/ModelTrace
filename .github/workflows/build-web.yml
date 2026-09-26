@@ -51,7 +51,8 @@ jobs:
         env:
           NUXT_APP_BASE_URL: ${{ inputs.base-url }}
           NUXT_PUBLIC_PROXY_URL: ${{ inputs.proxy-url }}
-          NUXT_PUBLIC_GTAG_ID: ${{ vars.NUXT_PUBLIC_GTAG_ID || '' }}
+          # Nuxt runtime env overrides also apply to empty strings; never mask the default ID.
+          NUXT_PUBLIC_GTAG_ID: ${{ vars.NUXT_PUBLIC_GTAG_ID || 'G-R374H35YTH' }}
           NUXT_PUBLIC_GTAG_ENABLED: ${{ vars.NUXT_PUBLIC_GTAG_ENABLED || 'true' }}
         run: |
           npm run generate
