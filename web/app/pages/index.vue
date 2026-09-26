@@ -1,11 +1,31 @@
 <script setup lang="ts">
-import { Github, Moon, PenLine, Sun, Zap } from "lucide-vue-next";
+import { FlaskConical, Github, Moon, PenLine, Sun, Zap } from "lucide-vue-next";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 const mode = ref("auto");
 const manualTab = ref<InstanceType<typeof TabsTrigger> | null>(null);
+const autoTab = ref<InstanceType<typeof TabsTrigger> | null>(null);
+const degradationTab = ref<InstanceType<typeof TabsTrigger> | null>(null);
 const { isDark, toggle } = useTheme();
+const { unlocked, disable: disableDegradation } = useDegradationUnlock(async () => {
+  mode.value = "degradation";
+  await nextTick();
+  const trigger = degradationTab.value?.$el;
+  if (trigger instanceof HTMLElement) trigger.focus();
+});
+
+function closeDegradation() {
+  disableDegradation();
+  void openAuto();
+}
+
+async function openAuto() {
+  mode.value = "auto";
+  await nextTick();
+  const trigger = autoTab.value?.$el;
+  if (trigger instanceof HTMLElement) trigger.focus();
+}
 
 async function openManual() {
   mode.value = "manual";
@@ -19,12 +39,13 @@ async function openManual() {
   <main class="flex min-h-0 flex-1 flex-col">
     <Tabs v-model="mode" class="flex min-h-0 flex-1 flex-col">
       <!-- 模式切换仍位于大框架外，不引入导航栏或 Logo。 -->
-      <div class="flex shrink-0 items-center justify-between gap-3">
+      <div class="flex shrink-0 flex-wrap items-center justify-between gap-3">
         <TabsList
-          class="h-auto justify-start gap-3 bg-transparent p-0"
+          class="h-auto min-w-0 flex-wrap justify-start gap-3 bg-transparent p-0"
           aria-label="测试模式"
         >
           <TabsTrigger
+            ref="autoTab"
             value="auto"
             class="border bg-secondary px-3 py-2 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
           >
@@ -41,8 +62,18 @@ async function openManual() {
               ><PenLine class="size-4 stroke-[1.5px]" />手动测试</span
             >
           </TabsTrigger>
+          <TabsTrigger
+            v-if="unlocked"
+            ref="degradationTab"
+            value="degradation"
+            class="border bg-secondary px-3 py-2 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
+          >
+            <span class="flex items-center gap-1.5"
+              ><FlaskConical class="size-4 stroke-[1.5px]" />降智检测</span
+            >
+          </TabsTrigger>
         </TabsList>
-        <div class="flex items-center gap-2">
+        <div class="ml-auto flex items-center gap-2">
           <Button
             variant="outline"
             size="icon"
@@ -78,6 +109,15 @@ async function openManual() {
         class="mt-0 flex min-h-0 flex-1 flex-col"
       >
         <AutoSection @manual="openManual" />
+      </TabsContent>
+      <TabsContent
+        v-if="unlocked"
+        v-show="mode === 'degradation'"
+        value="degradation"
+        force-mount
+        class="mt-0 flex min-h-0 flex-1 flex-col"
+      >
+        <LazyDegradationSection @configure="openAuto" @close="closeDegradation" />
       </TabsContent>
     </Tabs>
   </main>

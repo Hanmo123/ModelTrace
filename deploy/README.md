@@ -103,6 +103,8 @@ curl -i -X OPTIONS 'https://modeltrace-relay.my-account.workers.dev/v1/chat/comp
 | `deploy/cloudflare/pages-project.mjs` | 首次创建 / 校验 Pages 项目及生产分支 |
 | `deploy/package.json` + `package-lock.json` | 锁定 Wrangler 及其依赖；通过提交 lockfile 升级 |
 
+固定单题诊断需要同步发布前端和 Worker（`target=all`），旧 Worker 不接受新增的固定问题。快捷键仅隐藏前端入口，不是身份认证；启用开关保存在当前站点的浏览器存储中，手动关闭后清除。
+
 Worker CI 使用 `worker/wrangler.toml.example` 的 entrypoint、compatibility date 和强制限流配置，仅覆盖 Worker 名称、`SITE_ORIGIN`、限流 namespace。生成的 `worker/wrangler.ci.toml` 已被 gitignore 忽略，不读取、不覆盖本机的 `worker/wrangler.toml`。修改 Worker 的通用部署选项时请编辑模板。
 
 本地检查（Node.js 22+）：

@@ -10,6 +10,11 @@ import type { EndpointPreset } from "@/composables/usePresets";
 import { createTaskQueue } from "../lib/task-queue";
 import { classifyRequestError } from "../lib/direct-routing";
 import { useDirectRouting } from "./useDirectRouting";
+import {
+  classifyDegradation,
+  DEGRADATION_PROMPT,
+  type DegradationVerdict,
+} from "../lib/degradation";
 
 export type StepState =
   "pending" | "working" | "done" | "invalid" | "error" | "skipped";
@@ -33,12 +38,35 @@ export interface PresetRunState {
   finishedAt: number | null;
 }
 
+export interface DegradationRunState {
+  status: RunStatus;
+  transport: "direct" | "proxy";
+  verdict: DegradationVerdict | null;
+  error: string | null;
+}
+
+type TestMode = "fingerprint" | "degradation";
+type ModelRunState = PresetRunState | DegradationRunState;
+
 const TARGET_VALID = 3;
 const MAX_ATTEMPTS = 3;
 const SUCCESS_PROBABILITY = 0.99;
 const BATCH_CONCURRENCY = 2;
 // Shared by every useApiTest() instance, including single-model clicks.
-const testQueue = createTaskQueue<PresetRunState>(BATCH_CONCURRENCY);
+const testQueue = createTaskQueue<ModelRunState>(BATCH_CONCURRENCY);
+
+function modelForPreset(preset: EndpointPreset, proxyURL?: string) {
+  const openai = createOpenAI({
+    baseURL: proxyURL || preset.baseUrl,
+    apiKey: preset.apiKey,
+    ...(proxyURL
+      ? { headers: { "X-ModelTrace-Endpoint": preset.baseUrl } }
+      : {}),
+  });
+  return preset.apiType === "responses"
+    ? openai.responses(preset.model)
+    : openai.chat(preset.model);
+}
 
 function describeError(error: unknown, apiKey: string): string {
   const message = error instanceof Error ? error.message : String(error);
@@ -57,6 +85,14 @@ export function useApiTest() {
     "modeltrace:run-states",
     () => ({}),
   );
+  const degradationRuns = useState<Record<string, DegradationRunState>>(
+    "modeltrace:degradation-runs",
+    () => ({}),
+  );
+  const jobs = useState<Record<string, { mode: TestMode; token: string }>>(
+    "modeltrace:model-jobs",
+    () => ({}),
+  );
   const batchRunning = useState<boolean>(
     "modeltrace:batch-running",
     () => false,
@@ -64,18 +100,54 @@ export function useApiTest() {
   const queuedIds = useState<string[]>("modeltrace:queued-presets", () => []);
 
   function isRunning(presetId: string): boolean {
-    return runStates.value[presetId]?.status === "running";
+    return isBusy(presetId) && !queuedIds.value.includes(presetId);
   }
 
   function clearRun(presetId: string) {
-    if (isRunning(presetId) || queuedIds.value.includes(presetId)) return;
+    if (isBusy(presetId)) return;
     const rest = { ...runStates.value };
     delete rest[presetId];
     runStates.value = rest;
+    const diagnostics = { ...degradationRuns.value };
+    delete diagnostics[presetId];
+    degradationRuns.value = diagnostics;
   }
 
   function isBusy(id: string) {
-    return isRunning(id) || queuedIds.value.includes(id);
+    return Object.hasOwn(jobs.value, id);
+  }
+
+  function hasDegradationJobs() {
+    return Object.values(jobs.value).some((job) => job.mode === "degradation");
+  }
+
+  function schedule<T extends ModelRunState>(
+    id: string,
+    mode: TestMode,
+    task: () => Promise<T>,
+  ): Promise<T> {
+    // Join duplicate clicks only within the same mode, never return a
+    // fingerprint result to a diagnostic caller (or vice versa).
+    if (testQueue.has(id)) {
+      if (jobs.value[id]?.mode !== mode)
+        return Promise.reject(new Error("此模型正在执行其他测试，请等待完成。"));
+      return testQueue.enqueue(id, task) as Promise<T>;
+    }
+    const token = crypto.randomUUID();
+    jobs.value = { ...jobs.value, [id]: { mode, token } };
+    queuedIds.value = [...queuedIds.value, id];
+    const promise = testQueue.enqueue(id, () => {
+      queuedIds.value = queuedIds.value.filter((queued) => queued !== id);
+      return task();
+    }) as Promise<T>;
+    const release = () => {
+      if (jobs.value[id]?.token !== token) return;
+      const rest = { ...jobs.value };
+      delete rest[id];
+      jobs.value = rest;
+    };
+    void promise.then(release, release);
+    return promise;
   }
 
   function runPreset(
@@ -95,12 +167,9 @@ export function useApiTest() {
     // Freeze connection, model and bank when enqueued, not when a slot opens.
     const preset = { ...input };
     const currentBank = bank.value;
-    if (!testQueue.has(preset.id))
-      queuedIds.value = [...queuedIds.value, preset.id];
-    return testQueue.enqueue(preset.id, () => {
-      queuedIds.value = queuedIds.value.filter((id) => id !== preset.id);
-      return executePreset(preset, proxyBaseURL, currentBank, directFirst);
-    });
+    return schedule(preset.id, "fingerprint", () =>
+      executePreset(preset, proxyBaseURL, currentBank, directFirst),
+    );
   }
 
   async function executePreset(
@@ -136,19 +205,8 @@ export function useApiTest() {
     runStates.value = { ...runStates.value, [preset.id]: state };
 
     try {
-      function modelFor(proxyURL?: string) {
-        const openai = createOpenAI({
-          baseURL: proxyURL || preset.baseUrl,
-          apiKey: preset.apiKey,
-          ...(proxyURL
-            ? { headers: { "X-ModelTrace-Endpoint": preset.baseUrl } }
-            : {}),
-        });
-        return preset.apiType === "responses"
-          ? openai.responses(preset.model)
-          : openai.chat(preset.model);
-      }
-      let model = modelFor(
+      let model = modelForPreset(
+        preset,
         state.transport === "proxy" ? proxyBaseURL : undefined,
       );
 
@@ -183,7 +241,7 @@ export function useApiTest() {
           if (!proxyBaseURL) throw error;
           state.transport = "proxy";
           state.message = `直连网络失败，已记录标记，正在通过已授权的代理重试挑战 ${index + 1}`;
-          model = modelFor(proxyBaseURL);
+          model = modelForPreset(preset, proxyBaseURL);
           return call();
         }
       }
@@ -261,6 +319,47 @@ export function useApiTest() {
     return state;
   }
 
+  function runDegradation(
+    input: EndpointPreset,
+    proxyBaseURL?: string,
+  ): Promise<DegradationRunState> {
+    const preset = { ...input };
+    return schedule(preset.id, "degradation", async () => {
+      const state = reactive<DegradationRunState>({
+        status: "running",
+        transport: proxyBaseURL ? "proxy" : "direct",
+        verdict: null,
+        error: null,
+      });
+      degradationRuns.value = { ...degradationRuns.value, [preset.id]: state };
+      try {
+        // Exactly one fixed question and one SDK call. No bank analysis,
+        // retries, automatic fallback, raw-answer storage or attribution.
+        const { text } = await generateText({
+          model: modelForPreset(preset, proxyBaseURL),
+          prompt: DEGRADATION_PROMPT,
+          temperature: preset.temperature ?? undefined,
+          maxRetries: 0,
+          abortSignal: AbortSignal.timeout(180_000),
+        });
+        state.verdict = classifyDegradation(text);
+        state.status = "success";
+      } catch (error) {
+        const { kind, statusCode } = classifyRequestError(error);
+        state.status = "failed";
+        // Error bodies can contain keys or model output; don't display them.
+        state.error = kind === "network"
+          ? "网络或 CORS 请求失败，可检查连接或授权代理后重试。本次不做判定。"
+          : kind === "aborted"
+            ? "请求超时或已取消，本次不做判定。"
+            : statusCode
+              ? `服务商返回 HTTP ${statusCode}，请检查密钥、权限或限流设置。本次不做判定。`
+              : "请求未完成，请检查服务商与协议配置。本次不做判定。";
+      }
+      return state;
+    });
+  }
+
   async function runBatch(presets: EndpointPreset[], proxyBaseURL?: string) {
     if (batchRunning.value) return [];
     if (!bank.value) throw new Error("指纹库尚未加载完成");
@@ -283,12 +382,15 @@ export function useApiTest() {
 
   return {
     runStates,
+    degradationRuns,
     batchRunning,
     queuedIds,
     isRunning,
     isBusy,
+    hasDegradationJobs,
     runPreset,
     runBatch,
+    runDegradation,
     clearRun,
   };
 }

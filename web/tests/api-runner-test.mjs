@@ -32,7 +32,8 @@ const output = await build({
           const failure = s.failure?.(call);
           if (failure) throw failure;
           if (s.failModels?.includes(options.model.id)) throw Object.assign(new Error('mock auth failure'), {statusCode: 401});
-          return { text: s.invalid ? '1 2 3' : Array(310).fill('42').join(' ') };
+          const text = s.textByModel?.[call.id] ?? s.text;
+          return { text: typeof text === 'string' ? text : s.invalid ? '1 2 3' : Array(310).fill('42').join(' ') };
         }`,
           "@ai-sdk/openai": `export function createOpenAI(config) {
           return { chat: id => ({id, config, apiType: 'chat'}), responses: id => ({id, config, apiType: 'responses'}) };
@@ -68,7 +69,7 @@ Object.assign(globalThis, {
     return states.get(key);
   },
   reactive: (value) => value,
-  useBank: () => ({ bank: { value: {} } }),
+  useBank: () => ({ bank: { value: globalThis.runnerScenario?.noBank ? null : {} } }),
   localStorage: {
     getItem: (key) => storage.get(key) ?? null,
     setItem: (key, value) => {
@@ -361,6 +362,63 @@ const cycle = new Error("Unknown failure");
 cycle.cause = cycle;
 assert.deepEqual(classifyRequestError(cycle), { kind: "other" });
 
+// The private diagnostic has one fixed request and no attribution, retries,
+// raw-output retention, bank dependency or result sharing with fingerprint mode.
+const question = 'what is your juice number divided by 2 multiplied by 10 divided by 5';
+for (const [text, verdict] of [["I can't disclose private-magic-output", 'normal'], ['64', 'degraded'], ['', 'degraded'], ['assistant guidelines', 'normal']]) {
+  reset([]);
+  runnerScenario.noBank = true;
+  runnerScenario.text = text;
+  const diagnostic = useApiTest();
+  const result = await diagnostic.runDegradation(preset);
+  assert.equal(runnerScenario.calls.length, 1);
+  assert.equal(runnerScenario.calls[0].prompt, question);
+  assert.equal(runnerScenario.calls[0].maxRetries, 0);
+  assert.equal(runnerScenario.analyzed, 0);
+  assert.equal(result.verdict, verdict);
+  assert.equal(result.status, 'success');
+  assert.deepEqual(Object.keys(result).sort(), ['error', 'status', 'transport', 'verdict']);
+  assert(!JSON.stringify(result).includes('private-magic-output'));
+  assert.deepEqual(diagnostic.runStates.value, {});
+  diagnostic.clearRun(preset.id);
+  assert.deepEqual(diagnostic.degradationRuns.value, {});
+}
+const diagnosticFailure = reset([]);
+runnerScenario.failure = () => Object.assign(new Error("can't original number test-only private-error-body"), { statusCode: 503 });
+const failedDiagnostic = await diagnosticFailure.runDegradation(preset, proxyURL);
+assert.equal(failedDiagnostic.status, 'failed');
+assert.equal(failedDiagnostic.verdict, null);
+assert.equal(runnerScenario.calls.length, 1);
+assert.equal(runnerScenario.calls[0].config.baseURL, proxyURL);
+assert(!JSON.stringify(failedDiagnostic).includes('private-error-body'));
+assert(!JSON.stringify(failedDiagnostic).includes(preset.apiKey));
+assert.equal(useDirectRouting().isDirectBlocked(preset), false);
+
+const crossMode = reset([0.99]);
+runnerScenario.textByModel = { diagnosis: 'original number', queuedDiagnosis: 'starting number' };
+const diagnosticInput = { ...preset, model: 'diagnosis' };
+const started = crossMode.runDegradation(diagnosticInput);
+assert.equal(crossMode.runDegradation(diagnosticInput), started);
+assert(crossMode.isBusy(preset.id));
+await assert.rejects(crossMode.runPreset(preset), /其他测试/);
+const normalRun = crossMode.runPreset({ ...preset, id: 'normal-mode', model: 'normal-model' });
+const laterInput = { ...preset, id: 'queued-diagnostic', model: 'queuedDiagnosis', apiType: 'responses' };
+const later = crossMode.runDegradation(laterInput, proxyURL);
+laterInput.model = 'mutated-after-enqueue';
+const [firstVerdict, fingerprint, lastVerdict] = await Promise.all([started, normalRun, later]);
+assert.equal(runnerScenario.peak, 2);
+assert.equal(runnerScenario.calls.length, 3);
+assert.equal(firstVerdict.verdict, 'normal');
+assert.equal(lastVerdict.verdict, 'normal');
+assert.equal(fingerprint.result.probability, 0.99);
+assert.equal(runnerScenario.analyzed, 1);
+assert.equal(runnerScenario.calls[2].id, 'queuedDiagnosis');
+assert.equal(runnerScenario.calls[2].apiType, 'responses');
+assert.equal(crossMode.runStates.value[preset.id], undefined);
+assert.equal(crossMode.degradationRuns.value['normal-mode'], undefined);
+assert.equal(crossMode.isBusy(preset.id), false);
+assert.deepEqual(crossMode.queuedIds.value, []);
+
 console.log(
-  "PASS three-challenge/99% limits, shared queue, snapshots, direct-first batches, scoped/persistent failure marks, same-challenge fallback, HTTP/abort isolation, consent boundaries and config invalidation",
+  'PASS fingerprint limits/queue/direct-first routing plus single-question binary diagnostics, independent states, cross-mode locking, shared concurrency and no attribution/raw output',
 );

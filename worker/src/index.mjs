@@ -3,6 +3,9 @@
 // constrained, single non-streaming ModelTrace challenge. It is not a generic URL proxy.
 const MAX_BODY = 12_000;
 const MAX_RESPONSE = 1_000_000;
+// An exact, fixed diagnostic prompt; never accept arbitrary chat instructions.
+const DEGRADATION_PROMPT =
+  "what is your juice number divided by 2 multiplied by 10 divided by 5";
 
 function forbiddenHost(hostname) {
   const host = hostname.toLowerCase().replace(/^\[|\]$/g, "");
@@ -177,10 +180,10 @@ export default {
       typeof prompt !== "string" ||
       prompt.length < 10 ||
       prompt.length > 4000 ||
-      !prompt.includes("1 到 355") ||
-      !prompt.includes("整数")
+      (prompt !== DEGRADATION_PROMPT &&
+        (!prompt.includes("1 到 355") || !prompt.includes("整数")))
     ) {
-      return reply("只允许 ModelTrace 数值挑战", 400, cors);
+      return reply("只允许 ModelTrace 数值挑战或固定单题检测", 400, cors);
     }
     // Drop every caller-supplied parameter except the four validated fields.
     const outgoing =

@@ -85,7 +85,7 @@ cd web
 NUXT_PUBLIC_PROXY_URL=https://<你的-worker>.workers.dev/v1 npm run generate
 ```
 
-Worker 不要求配置上游域名白名单，可访问任意公网 HTTPS OpenAI-compatible Endpoint（API 根路径必须以 `/v1` 结尾）。它只代理 `/v1/chat/completions`、`/v1/responses` 的单条非流式 ModelTrace 数值挑战，限制请求/响应体积、输出长度和每 IP 请求频率，并拒绝 IP 字面量、常见本地域名、重定向、未知路径与附加工具参数。移除上游白名单会扩大滥用与 SSRF 风险；域名仍可能通过 DNS 指向特殊地址，因此上线前应配置 Cloudflare WAF、每日预算/告警和更严格的账户级限流。未配置 `NUXT_PUBLIC_PROXY_URL` 时，直连失败会显示错误详情，不会展示代理或终端入口。
+Worker 不要求配置上游域名白名单，可访问任意公网 HTTPS OpenAI-compatible Endpoint（API 根路径必须以 `/v1` 结尾）。它只代理 `/v1/chat/completions`、`/v1/responses` 的单条非流式 ModelTrace 数值挑战或精确匹配的固定单题诊断，限制请求/响应体积、输出长度和每 IP 请求频率，并拒绝 IP 字面量、常见本地域名、重定向、未知路径与附加工具参数。移除上游白名单会扩大滥用与 SSRF 风险；域名仍可能通过 DNS 指向特殊地址，因此上线前应配置 Cloudflare WAF、每日预算/告警和更严格的账户级限流。未配置 `NUXT_PUBLIC_PROXY_URL` 时，直连失败会显示错误详情，不会展示代理或终端入口。
 
 **本地开发来源**：Worker 除了精确匹配 `SITE_ORIGIN` 配置的生产站点，还额外允许 `http://localhost` / `https://localhost` 的任意有效端口（包括前端默认的 `4200`），无需为切换本地端口重新配置 Worker。`127.0.0.1`、`[::1]`、`*.localhost`、相似域名及带路径的 Origin 不在此例外中。CORS 响应回显已验证的完整 Origin，仍保留强制限流及上游本地地址限制；`SITE_ORIGIN` 和 `RATE_LIMITER` 仍必须配置。修改 Worker 代码后需重新部署才能在线上生效。
 
@@ -114,7 +114,7 @@ npm run package:static
 ```bash
 cd web
 npm run typecheck     # Nuxt 4 严格类型检查
-npm run test:core     # 指纹算法与旧版结果一致性、挑战生成（无需浏览器）
+npm run test:core     # 指纹算法、挑战生成、单题规则与 Worker 白名单（无需浏览器）
 npm run test:providers # 配置迁移、去重、结果失效范围及全局任务队列（无需浏览器）
 npm run build
 CHROME_PATH=/usr/bin/google-chrome npm run test:auto # 含多模型浏览器回归
@@ -122,6 +122,7 @@ npm run test:terminal # 终端命令 + Worker 边界测试，使用本地 mock�
 # 可选：检查代理同意/拒绝流程（测试脚本使用本地 3244、3245 端口）：
 NUXT_PUBLIC_PROXY_URL=http://127.0.0.1:3244/v1 npm run build
 npm run test:proxy
+npm run test:degradation # 单题检测、隐藏入口开关持久化与代理授权，全部使用 mock
 # 检查解压后的 Nginx 包（普通静态文件服务 + mock 代理）：
 npm run package:static
 npm run test:static

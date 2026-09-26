@@ -54,6 +54,9 @@ const directBlocked = computed(
   () => new Set(targets.value.filter(isDirectBlocked).map((target) => target.id)),
 );
 const queued = computed(() => new Set(queuedIds.value));
+const busyModels = computed(
+  () => new Set(targets.value.filter((target) => isBusy(target.id)).map((target) => target.id)),
+);
 const busyProviders = computed(
   () =>
     new Set(
@@ -336,6 +339,7 @@ async function executeTests(
           :selected-id="selectedId"
           :runs="runStates"
           :queued="queued"
+          :busy-models="busyModels"
           :direct-blocked="directBlocked"
           :disabled="!bank || proxyOpen || batchRunning"
           :locked="locked(preset.id)"

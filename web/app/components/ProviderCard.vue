@@ -33,6 +33,7 @@ const props = defineProps<{
   selectedId: string | null;
   runs: Record<string, PresetRunState>;
   queued: ReadonlySet<string>;
+  busyModels: ReadonlySet<string>;
   directBlocked: ReadonlySet<string>;
   disabled: boolean;
   locked: boolean;
@@ -48,7 +49,7 @@ const rows = computed(() =>
   providerTargets(props.preset).map((target) => {
     const run = props.runs[target.id];
     const queued = props.queued.has(target.id);
-    const busy = queued || run?.status === "running";
+    const busy = props.busyModels.has(target.id);
     return {
       target,
       run,
@@ -56,7 +57,7 @@ const rows = computed(() =>
       busy,
       status: queued
         ? "排队中"
-        : run?.status === "running"
+        : busy
           ? "测试中"
           : run?.status === "success"
             ? "已完成"
@@ -186,7 +187,7 @@ function selectProvider() {
                 class="shrink-0"
               >
                 <Loader2
-                  v-if="row.run?.status === 'running'"
+                  v-if="row.busy && !row.queued"
                   class="mr-1 size-3 animate-spin"
                 />{{ row.status }}
               </Badge>
