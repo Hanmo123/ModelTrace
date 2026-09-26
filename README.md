@@ -56,7 +56,7 @@ NUXT_PUBLIC_GTAG_ID=G-你的统计ID npm run generate
 NUXT_PUBLIC_GTAG_ENABLED=false npm run generate
 ```
 
-GitHub Actions 同样支持这两个 **Repository Variables**，Cloudflare / GitHub Pages 共用同一配置。纯静态站点修改后必须重新构建，单独修改托管平台的运行时变量不会更新已发布页面。上线后可通过浏览器 Network 的 `gtag/js` 请求和 GA4「实时」报告验收。本地回归可运行 `npm run generate && npm run test:analytics`（需要 Chrome）；测试会拦截全部网络请求，不会产生真实 Google 统计。
+GitHub Actions 同样支持这两个 **Repository Variables**，Cloudflare / GitHub Pages 共用同一配置。纯静态站点修改后必须重新构建，单独修改托管平台的运行时变量不会更新已发布页面。上线后可通过浏览器 Network 的 `gtag/js` 请求和 GA4「实时」报告验收。Google 统计不作为 CI 发布门禁，避免统计检查阻塞站点发布。
 
 ### 同一服务商测试多个模型
 

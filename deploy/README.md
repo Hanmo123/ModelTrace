@@ -96,7 +96,7 @@ curl -i -X OPTIONS 'https://modeltrace-relay.my-account.workers.dev/v1/chat/comp
 
 | 文件 | 职责 |
 | --- | --- |
-| `.github/workflows/build-web.yml` | 可复用、无云凭据的静态构建：`npm ci`、Nuxt 4 类型检查、配置/队列/API runner/Worker mock 测试、`npm run generate`、Google 统计静态浏览器检查、上传 artifact |
+| `.github/workflows/build-web.yml` | 可复用、无云凭据的静态构建：`npm ci`、Nuxt 4 类型检查、配置/队列/API runner/Worker mock 测试、`npm run generate`、上传 artifact |
 | `.github/workflows/cloudflare.yml` | PR / push CI、Worker dry-run、生产部署、单目标手动部署 |
 | `.github/workflows/pages.yml` | 保留的 GitHub Pages 发布，同样复用静态构建 |
 | `deploy/cloudflare/config.mjs` | 校验配置，从已跟踪模板生成隔离的 Worker CI 配置 |
@@ -120,7 +120,7 @@ npm run test:terminal
 NUXT_APP_BASE_URL=/ NUXT_PUBLIC_PROXY_URL= npm run generate
 ```
 
-CI 不调用真实 Cloudflare API，也不跑需要真实模型的测试；只有部署 job 才调用 Cloudflare。统计检查使用 Ubuntu runner 自带的 Chrome，对静态产物模拟生产域名与本地地址，拦截全部网络请求，不会产生真实 Google Analytics 访问。其他业务浏览器 E2E 仍可按根 README 在本地运行。静态 artifact `modeltrace-web` 保留 7 天，不含服务器运行时；源码位于 `web/.output/public`，下载后的 artifact 根目录直接是 `index.html` 等文件。
+CI 不调用真实 Cloudflare API，也不跑需要真实模型的测试；只有部署 job 才调用 Cloudflare。Google 统计不作为 CI 发布门禁，部署后通过浏览器 Network 和 GA4「实时」报告手动验收。业务浏览器 E2E 仍可按根 README 在本地运行。静态 artifact `modeltrace-web` 保留 7 天，不含服务器运行时；源码位于 `web/.output/public`，下载后的 artifact 根目录直接是 `index.html` 等文件。
 
 ## 后续迁移到 EdgeOne Pages
 

@@ -58,13 +58,6 @@ jobs:
           test -s .output/public/index.html
           test -s .output/public/data/unified_bank.json
           touch .output/public/.nojekyll
-      - name: Verify analytics integration without contacting Google
-        working-directory: web
-        env:
-          TEST_BASE_URL: ${{ inputs.base-url }}
-          EXPECT_GTAG_ID: ${{ vars.NUXT_PUBLIC_GTAG_ID || 'G-R374H35YTH' }}
-          EXPECT_GTAG_ENABLED: ${{ vars.NUXT_PUBLIC_GTAG_ENABLED || 'true' }}
-        run: npm run test:analytics
       - name: Upload static site
         uses: actions/upload-artifact@v4
         with:

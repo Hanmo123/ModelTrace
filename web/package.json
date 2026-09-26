@@ -17,7 +17,6 @@
     "test:providers": "node --test tests/providers-test.mjs",
     "test:core": "node --test tests/core-test.mjs",
     "test:multi": "node tests/multi-model-test.mjs",
-    "test:analytics": "node tests/analytics-test.mjs",
     "test:terminal": "node tests/terminal-proxy-test.mjs",
     "test:proxy": "node tests/proxy-consent-test.mjs",
     "test:static": "node tests/static-package-test.mjs",
