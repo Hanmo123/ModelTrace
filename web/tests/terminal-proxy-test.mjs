@@ -142,6 +142,144 @@ try {
     200,
   );
   assert.equal(called.url, "https://api.vendor.com/v1/responses");
+
+  const allowedOrigins = [
+    env.SITE_ORIGIN,
+    "http://localhost",
+    "https://localhost",
+    "http://localhost:80",
+    "https://localhost:443",
+    "http://localhost:0",
+    "http://localhost:1",
+    "http://localhost:3000",
+    "http://localhost:4200",
+    "https://localhost:4200",
+    "http://localhost:5173",
+    "https://localhost:65535",
+    "http://LOCALHOST:4200",
+  ];
+  for (const origin of allowedOrigins) {
+    called = undefined;
+    const preflight = await worker.fetch(
+      new Request("https://worker.example/v1/chat/completions", {
+        method: "OPTIONS",
+        headers: {
+          Origin: origin,
+          "Access-Control-Request-Method": "POST",
+          "Access-Control-Request-Headers":
+            "authorization,content-type,x-modeltrace-endpoint",
+        },
+      }),
+      env,
+    );
+    assert.equal(preflight.status, 204, origin);
+    assert.equal(preflight.headers.get("access-control-allow-origin"), origin);
+    assert.equal(preflight.headers.get("vary"), "Origin");
+    assert.equal(called, undefined, "Preflight must not contact an upstream");
+    const response = await worker.fetch(mk(chatBody, { Origin: origin }), env);
+    assert.equal(response.status, 200, origin);
+    assert.equal(response.headers.get("access-control-allow-origin"), origin);
+    assert.equal(response.headers.get("vary"), "Origin");
+    assert.equal(response.headers.get("cache-control"), "no-store");
+    assert.equal(called.url, "https://api.vendor.com/v1/chat/completions");
+  }
+
+  for (const origin of [
+    null,
+    "null",
+    "*",
+    "localhost",
+    "https://evil.example",
+    "http://app.example",
+    "https://app.example:4200",
+    "http://127.0.0.1:4200",
+    "http://[::1]:4200",
+    "http://localhost.evil.example:4200",
+    "https://sub.localhost:4200",
+    "http://localhost.:4200",
+    "http://local%68ost:4200",
+    "http://localhost:65536",
+    "http://localhost:-1",
+    "http://localhost:",
+    "http://localhost:4200/",
+    "http://localhost:4200/path",
+    "http://localhost:4200?",
+    "http://localhost:4200#fragment",
+    "http://user@localhost:4200",
+    "http://localhost:4200@evil.example",
+    "http://localhost:4200 http://localhost:3000",
+    "http://localhost:4200,https://evil.example",
+    "ftp://localhost:4200",
+    "file://localhost",
+    "http://localhost\\@evil.example",
+  ]) {
+    for (const method of ["POST", "OPTIONS"]) {
+      called = undefined;
+      const request =
+        method === "POST"
+          ? mk(chatBody)
+          : new Request("https://worker.example/v1/chat/completions", {
+              method,
+            });
+      if (origin === null) request.headers.delete("Origin");
+      else request.headers.set("Origin", origin);
+      const response = await worker.fetch(request, env);
+      assert.equal(response.status, 403, `${method} ${origin}`);
+      assert.equal(response.headers.get("access-control-allow-origin"), null);
+      assert.equal(
+        called,
+        undefined,
+        "Rejected origins must never be forwarded",
+      );
+    }
+  }
+
+  // Localhost is a CORS exception, not a bypass of configuration or proxy limits.
+  const local = { Origin: "http://localhost:4200" };
+  for (const missing of [{ SITE_ORIGIN: "" }, { RATE_LIMITER: undefined }]) {
+    assert.equal(
+      (await worker.fetch(mk(chatBody, local), { ...env, ...missing })).status,
+      503,
+    );
+  }
+  called = undefined;
+  const limited = await worker.fetch(mk(chatBody, local), {
+    ...env,
+    RATE_LIMITER: { limit: async () => ({ success: false }) },
+  });
+  assert.equal(limited.status, 429);
+  assert.equal(
+    limited.headers.get("access-control-allow-origin"),
+    local.Origin,
+  );
+  const noIP = mk(chatBody, local);
+  noIP.headers.delete("CF-Connecting-IP");
+  assert.equal((await worker.fetch(noIP, env)).status, 403);
+  for (const endpoint of ["https://localhost/v1", "https://127.0.0.1/v1"]) {
+    assert.equal(
+      (
+        await worker.fetch(
+          mk(chatBody, { ...local, "X-ModelTrace-Endpoint": endpoint }),
+          env,
+        )
+      ).status,
+      403,
+    );
+  }
+  const noAuth = mk(chatBody, local);
+  noAuth.headers.delete("Authorization");
+  const unauthorized = await worker.fetch(noAuth, env);
+  assert.equal(unauthorized.status, 400);
+  assert.equal(
+    unauthorized.headers.get("access-control-allow-origin"),
+    local.Origin,
+  );
+  assert.equal(
+    called,
+    undefined,
+    "Local origins still require rate limiting and valid upstream/auth",
+  );
+
   assert.equal(
     (await worker.fetch(mk(chatBody, { Origin: "https://evil.example" }), env))
       .status,
@@ -195,4 +333,6 @@ try {
 } finally {
   globalThis.fetch = originalFetch;
 }
-console.log("PASS terminal command, JSON parsing, proxy restrictions");
+console.log(
+  "PASS terminal command, JSON parsing, production/localhost CORS and proxy restrictions",
+);

@@ -36,9 +36,10 @@ jobs:
           cache-dependency-path: web/package-lock.json
       - name: Install web dependencies
         run: npm ci --prefix web
-      - name: Test API runner and Worker boundaries (local mocks only)
+      - name: Test provider migration, model queue and Worker boundaries (local mocks only)
         working-directory: web
         run: |
+          npm run test:providers
           node tests/api-runner-test.mjs
           npm run test:terminal
       - name: Generate provider-independent static site

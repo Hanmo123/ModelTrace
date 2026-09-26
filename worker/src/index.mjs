@@ -34,6 +34,23 @@ function forbiddenHost(hostname) {
   ].some((domain) => host === domain || host.endsWith(`.${domain}`));
 }
 
+function isAllowedOrigin(origin, siteOrigin) {
+  if (!origin) return false;
+  if (origin === siteOrigin) return true;
+  try {
+    const url = new URL(origin);
+    // Allow localhost on any valid port, not IP aliases or *.localhost.
+    // The authority-only pattern also rejects credentials, paths, encoded hosts
+    // and URL-parser normalization tricks. Parsing validates the port range.
+    return (
+      url.hostname === "localhost" &&
+      /^https?:\/\/localhost(?::[0-9]+)?$/i.test(origin)
+    );
+  } catch {
+    return false;
+  }
+}
+
 function reply(message, status, headers) {
   return new Response(JSON.stringify({ error: { message } }), {
     status,
@@ -72,9 +89,10 @@ export default {
     const origin = request.headers.get("Origin");
     // Origin is not authentication; mandatory per-IP rate limiting remains required.
     if (!env.SITE_ORIGIN || !env.RATE_LIMITER) return reply("代理未配置", 503);
-    if (origin !== env.SITE_ORIGIN) return reply("不允许的页面来源", 403);
+    if (!isAllowedOrigin(origin, env.SITE_ORIGIN))
+      return reply("不允许的页面来源", 403);
     const cors = {
-      "Access-Control-Allow-Origin": env.SITE_ORIGIN,
+      "Access-Control-Allow-Origin": origin,
       "Access-Control-Allow-Methods": "POST, OPTIONS",
       "Access-Control-Allow-Headers":
         "authorization,content-type,x-modeltrace-endpoint",

@@ -19,6 +19,7 @@ const output = await build({
           s.active++; s.peak = Math.max(s.peak, s.active);
           await new Promise(resolve => setTimeout(resolve, 5));
           s.active--;
+          if (s.failModels?.includes(options.model.id)) throw Object.assign(new Error('mock auth failure'), {statusCode: 401});
           return { text: s.invalid ? '1 2 3' : Array(310).fill('42').join(' ') };
         }`,
           "@ai-sdk/openai": `export function createOpenAI(config) {
@@ -124,6 +125,61 @@ assert(
 );
 assert.equal(batch.batchRunning.value, false);
 assert.deepEqual(batch.queuedIds.value, []);
+// Single clicks and provider/global batches share one queue, including deduplication.
+const shared = reset([0.99]);
+const one = shared.runPreset({
+  ...preset,
+  id: "provider-a/model-a",
+  model: "first",
+});
+assert.equal(
+  shared.runPreset({ ...preset, id: "provider-a/model-a", model: "duplicate" }),
+  one,
+);
+const two = shared.runPreset({
+  ...preset,
+  id: "provider-a/model-b",
+  model: "second",
+});
+const queuedInput = { ...preset, id: "provider-b/model-a", model: "snapshot" };
+const waiting = shared.runPreset(queuedInput);
+assert(shared.queuedIds.value.includes(queuedInput.id));
+assert(shared.isBusy(queuedInput.id));
+queuedInput.model = "mutated-after-enqueue";
+const together = shared.runBatch([
+  { ...preset, id: "provider-a/model-a", model: "already-running" },
+  { ...preset, id: "provider-b/model-b", model: "batch" },
+  { ...preset, id: "provider-b/model-b", model: "duplicate-batch" },
+]);
+await Promise.all([one, two, waiting, together]);
+assert.equal(runnerScenario.peak, 2);
+assert.deepEqual(
+  runnerScenario.calls.map((call) => call.id),
+  ["first", "second", "snapshot", "batch"],
+);
+assert.equal(Object.keys(shared.runStates.value).length, 4);
+assert.deepEqual(shared.queuedIds.value, []);
+assert.equal(shared.batchRunning.value, false);
+
+const isolated = reset([0.99]);
+runnerScenario.failModels = ["bad-model"];
+const finished = await isolated.runBatch([
+  { ...preset, id: "provider/model-one", model: "bad-model" },
+  { ...preset, id: "provider/model-two", model: "good-model" },
+  { ...preset, id: "other-provider/model-one", model: "good-model" },
+]);
+assert.deepEqual(
+  finished.map((state) => state.status),
+  ["failed", "success", "success"],
+);
+assert.equal(
+  runnerScenario.calls.filter((call) => call.id === "bad-model").length,
+  1,
+);
+assert.notEqual(
+  isolated.runStates.value["provider/model-two"],
+  isolated.runStates.value["other-provider/model-one"],
+);
 console.log(
-  "PASS three-challenge limit, exact 99% early stop, invalid outputs and proxy batch concurrency",
+  "PASS three-challenge limit, exact 99% early stop, shared single/batch concurrency, snapshots, deduplication and model failure isolation",
 );

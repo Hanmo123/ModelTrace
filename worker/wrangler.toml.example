@@ -4,7 +4,8 @@ compatibility_date = "2025-07-01"
 workers_dev = true
 
 [vars]
-# Must match the deployed web origin exactly (no trailing slash or path).
+# Must match the deployed production origin exactly (no trailing slash or path).
+# HTTP(S) localhost origins on any valid port are additionally allowed by the Worker.
 SITE_ORIGIN = "https://modeltrace.pages.dev"
 # Upstream hosts are not configured here: the Worker accepts arbitrary public HTTPS
 # OpenAI-compatible endpoints ending in /v1, while rejecting IP literals/local names.

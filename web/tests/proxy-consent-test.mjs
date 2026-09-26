@@ -10,6 +10,7 @@ const numbers = Array.from(
   (_, i) => ((i * 73) % 355) + 1,
 ).join(" ");
 let proxyCalls = 0;
+const proxyModels = [];
 let targetCalls = 0;
 const target = http.createServer((req, res) => {
   targetCalls++;
@@ -28,6 +29,9 @@ const proxy = http.createServer(async (req, res) => {
     return;
   }
   proxyCalls++;
+  let body = "";
+  for await (const chunk of req) body += chunk;
+  proxyModels.push(JSON.parse(body).model);
   assert.equal(req.headers.authorization, "Bearer sk-test");
   assert.equal(
     req.headers["x-modeltrace-endpoint"],
@@ -108,6 +112,8 @@ try {
   );
   await fill("#preset-api-key", "sk-test");
   await fill("#preset-model", "test-model");
+  await click("添加模型");
+  await fill("#preset-model-1", "second-model");
   await click("保存");
   await delay(350);
   await click("开始测试");
@@ -123,6 +129,10 @@ try {
   );
   await click("一键测全部");
   await page.waitForSelector("[role=alertdialog]");
+  assert.match(
+    await page.$eval("[role=alertdialog]", (el) => el.textContent),
+    /2 个模型（1 个服务商）/,
+  );
   assert.equal(
     targetCalls + proxyCalls,
     0,
@@ -186,9 +196,13 @@ try {
   await click("保存");
   await click("一键测全部");
   await page.waitForFunction(() =>
-    document.body.textContent.includes("批量测试完成：成功 2 个"),
+    document.body.textContent.includes("批量测试完成：成功 3 个"),
   );
-  assert.equal(proxyCalls, 9);
+  assert.equal(proxyCalls, 12);
+  assert.equal(
+    proxyModels.filter((model) => model === "second-model").length,
+    3,
+  );
   assert.equal(
     targetCalls,
     directCallsAfterDecline,
@@ -204,13 +218,13 @@ try {
       .querySelector('[aria-label="服务商测试详情"]')
       ?.textContent.includes("测试完成"),
   );
-  assert.equal(proxyCalls, 12, "Remember consent across reloads");
+  assert.equal(proxyCalls, 15, "Remember consent across reloads");
   assert.equal((await page.$$("[role=alertdialog]")).length, 0);
 
   await click("撤销代理授权");
   await click("一键测全部");
   await page.waitForSelector("[role=alertdialog]");
-  assert.equal(proxyCalls, 12, "Revocation requires renewed consent");
+  assert.equal(proxyCalls, 15, "Revocation requires renewed consent");
   await page.keyboard.press("Escape");
   await page.evaluate(() =>
     localStorage.setItem(
@@ -224,11 +238,11 @@ try {
   await page.waitForSelector("[role=alertdialog]");
   assert.equal(
     proxyCalls,
-    12,
+    15,
     "Consent to a different proxy must not be reused",
   );
   console.log(
-    "PASS preflight single/batch consent, decline, remembered consent, revocation and URL scoping",
+    "PASS preflight single/multi-model batch consent, decline, remembered consent, revocation and URL scoping",
   );
 } finally {
   await browser?.close();

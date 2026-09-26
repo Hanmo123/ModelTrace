@@ -20,19 +20,27 @@ python start.py
 `web/` 是基于 Nuxt 3（纯 SPA，`ssr: false`）+ Tailwind CSS + shadcn-vue 重新设计的前端；默认在浏览器本地运行，不依赖后端。另有用户明确同意后才启用的可选 Cloudflare Worker 代理：
 
 - **API 自动检测**：基于 [AI SDK](https://ai-sdk.dev/)（`ai` + `@ai-sdk/openai`），浏览器直连目标 Endpoint，默认使用 OpenAI **Chat Completions**，也可在配置中选择 **Responses API**。每组最多测试 3 条独立挑战，不再追加补测题；第一份有效回答返回后即展示初步归因。模型归因概率（未四舍五入）达到 99% 时立即成功检验并停止后续题目，否则继续剩余题目。
-- **多服务商管理**：名称、Endpoint、API Key、模型 ID 四项必填，支持新增、编辑、删除。左侧为服务商列表，右侧 61.8% 优先展示归因结果及前 6 名匹配分布，用分割线隔开下方服务商信息、调用进度、每题提示词与原始回答。支持单个测试和一键测全部（批量并发 2），某个服务商失败不会阻塞其他任务。
-- **本地保存**：配置仅保存在当前浏览器的 localStorage（带版本 schema），刷新后恢复；测试结果仅保留在本次页面会话中。API Key 以明文保存在 localStorage，直连测试时只发送给用户配置的 Endpoint，授权使用代理时也会经过所选 Worker；请勿在共享设备上保存敏感密钥。
+- **多服务商 / 多模型管理**：每个服务商只需填写一次名称、Endpoint 和 API Key，可配置 1–50 个模型；每个模型独立选择 Chat Completions / Responses API。支持逐行添加、多行粘贴或逗号分隔批量添加，自动去重。左侧按服务商分组，模型行独立显示状态和归因摘要；右侧 61.8% 展示所选模型的结果、前 6 名候选、进度及原始回答。可测试单个模型、整个服务商或一键测全部；所有测试共用最多 2 个并发任务，其余排队，某个模型失败不阻塞其他模型。
+- **本地保存**：配置仅保存在当前浏览器的 localStorage（`modeltrace.presets.v2`），旧版单模型配置自动迁移为单模型服务商，成功写入新版后清理旧存储，不自动合并原有服务商。刷新后恢复配置，测试结果仅保留在本次页面会话中。API Key 以明文保存在 localStorage，直连测试时只发送给用户配置的 Endpoint，授权使用代理时也会经过所选 Worker；请勿在共享设备上保存敏感密钥。
 - **手动检测**：复制挑战发送给待测模型，任意一份回答达到长度阈值即在浏览器本地自动计算；继续填写其他回答后自动更新结果。切换手动/自动 Tab 不会清空输入或中断正在运行的自动测试。
 
 ```bash
 cd web
 npm install
-npm run dev      # 开发
-npm run build    # 产出 .output（node .output/server/index.mjs 预览）
+npm run dev      # 开发：http://localhost:4200/
+npm run build    # 产出 .output
+npm run preview  # 构建后本地预览：http://localhost:4200/
 npm run generate # 纯静态产物 .output/public，可部署到任意静态托管
 ```
 
 > 注意：Endpoint 填 API 根地址（例如 `https://api.openai.com/v1`），不要包含 `/chat/completions` 或 `/responses`。浏览器直连要求目标允许跨域（CORS）；HTTPS 页面一般无法请求普通 HTTP 端点。测试会消耗对应服务商的 API 额度。每次请求超时 180 秒，SDK 最多重试 1 次；401/403 鉴权错误或网络错误会提前结束该服务商的本轮测试。
+
+### 同一服务商测试多个模型
+
+1. 点击「添加服务商」，填写共用的 Endpoint / API Key，在「模型配置」逐个添加模型；也可直接向模型输入框粘贴多行，或用「批量添加」。重复 ID 自动去重（区分大小写），每个模型的请求协议单独选择。
+2. 点击左侧模型行查看该模型的详情；行末播放按钮只测试该模型。「测试此服务商」仅测试这一组，「一键测全部」则测试所有服务商的模型。任务排队时会显示「排队中」，批量授权只询问一次并明确显示模型数量。
+3. 「管理模型」可继续增删模型。新增模型、改服务商名称不会清空已有结果；修改模型 ID / 协议只清除该模型的结果，修改共享 Endpoint / API Key 会清除整个服务商的结果。运行或排队期间禁止修改相关服务商，避免配置与结果错位。
+4. 同名模型在不同服务商下互相独立。删除服务商时会一并删除其全部模型和当前结果；取消编辑不会修改保存的数据。
 
 ### 测试通道与代理授权
 
@@ -52,6 +60,8 @@ NUXT_PUBLIC_PROXY_URL=https://<你的-worker>.workers.dev/v1 npm run generate
 ```
 
 Worker 不要求配置上游域名白名单，可访问任意公网 HTTPS OpenAI-compatible Endpoint（API 根路径必须以 `/v1` 结尾）。它只代理 `/v1/chat/completions`、`/v1/responses` 的单条非流式 ModelTrace 数值挑战，限制请求/响应体积、输出长度和每 IP 请求频率，并拒绝 IP 字面量、常见本地域名、重定向、未知路径与附加工具参数。移除上游白名单会扩大滥用与 SSRF 风险；域名仍可能通过 DNS 指向特殊地址，因此上线前应配置 Cloudflare WAF、每日预算/告警和更严格的账户级限流。未配置 `NUXT_PUBLIC_PROXY_URL` 时，直连失败会显示错误详情，不会展示代理或终端入口。
+
+**本地开发来源**：Worker 除了精确匹配 `SITE_ORIGIN` 配置的生产站点，还额外允许 `http://localhost` / `https://localhost` 的任意有效端口（包括前端默认的 `4200`），无需为切换本地端口重新配置 Worker。`127.0.0.1`、`[::1]`、`*.localhost`、相似域名及带路径的 Origin 不在此例外中。CORS 响应回显已验证的完整 Origin，仍保留强制限流及上游本地地址限制；`SITE_ORIGIN` 和 `RATE_LIMITER` 仍必须配置。修改 Worker 代码后需重新部署才能在线上生效。
 
 ### GitHub Actions → Cloudflare Worker / Pages
 
@@ -77,8 +87,9 @@ npm run package:static
 
 ```bash
 cd web
+npm run test:providers # 配置迁移、去重、结果失效范围及全局任务队列（无需浏览器）
 npm run build
-CHROME_PATH=/usr/bin/google-chrome npm run test:auto
+CHROME_PATH=/usr/bin/google-chrome npm run test:auto # 含多模型浏览器回归
 npm run test:terminal # 终端命令 + Worker 边界测试，使用本地 mock，不需真实密钥
 # 可选：检查代理同意/拒绝流程（测试脚本使用本地 3244、3245 端口）：
 NUXT_PUBLIC_PROXY_URL=http://127.0.0.1:3244/v1 npm run build
@@ -88,7 +99,7 @@ npm run package:static
 npm run test:static
 ```
 
-覆盖最多 3 题、99% 阈值提前结束（含未四舍五入边界）、结果置顶/分割线、单个与批量测试前代理授权、记住/撤销授权、代理地址隔离，以及四项必填/URL 校验、增删改与 localStorage 恢复、Chat/Responses SDK 请求、批量并发/排队、鉴权失败/数字不足、Tab 切换保留状态与移动端横向溢出检查。
+覆盖最多 3 题、99% 阈值提前结束（含未四舍五入边界）、结果置顶/分割线、单个与多模型批量测试前代理授权、记住/撤销授权、代理地址隔离，以及必填/URL 校验、v1 → v2 迁移、批量模型输入/去重、按模型与服务商测试、同名模型隔离、选择性清除结果、全局单个/批量并发限制、快照与重复点击去重、鉴权失败/数字不足、刷新恢复、Tab 切换保留状态与移动端横向溢出检查。
 
 ## GitHub Pages
 
@@ -98,7 +109,7 @@ npm run test:static
 
 本仓库的 GitHub Pages 地址为 `https://hanmo123.github.io/ModelTrace/`；需在 GitHub 仓库 Settings → Pages 中将部署来源设为 **GitHub Actions**。
 
-**部署前需同步 Worker 来源**：GitHub Pages 的 Origin 是 `https://hanmo123.github.io`，不包含 `/ModelTrace/`。可设置 `SITE_ORIGIN` 并手动运行 Cloudflare workflow 的 `worker` 目标，或在本地修改 `worker/wrangler.toml` 后手动发布。仅发布静态页面不会自动修改 Worker 来源，配置不匹配会返回 403。Worker 当前只支持一个来源；若同时保留 Cloudflare Pages 和 GitHub Pages 的代理功能，需要分别部署 Worker。
+**部署前需同步 Worker 来源**：GitHub Pages 的 Origin 是 `https://hanmo123.github.io`，不包含 `/ModelTrace/`。可设置 `SITE_ORIGIN` 并手动运行 Cloudflare workflow 的 `worker` 目标，或在本地修改 `worker/wrangler.toml` 后手动发布。仅发布静态页面不会自动修改 Worker 来源，配置不匹配会返回 403。Worker 的生产来源仍只支持一个精确 Origin（另外允许 HTTP(S) localhost 任意有效端口）；若同时保留 Cloudflare Pages 和 GitHub Pages 的代理功能，需要分别部署 Worker。
 
 ## 使用
 

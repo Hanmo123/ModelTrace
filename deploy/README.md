@@ -84,7 +84,11 @@ curl -i -X OPTIONS 'https://modeltrace-relay.my-account.workers.dev/v1/chat/comp
 
 自定义域名需要先在 Cloudflare 控制台绑定和配置 DNS；本工作流**不自动创建域名 / 路由**。之后修改 `SITE_ORIGIN` 并执行 `all` 或 `worker`。如果 Worker 也使用自定义域名，先绑定该域名，再更新 `NUXT_PUBLIC_PROXY_URL` 并重建前端。
 
-**Worker 只接受一个精确 Origin，不接受 `*` 或逗号分隔列表。** 生产域名、`pages.dev`、Preview URL、GitHub Pages 是不同来源；只授权你实际使用的那个域名。不要为支持任意 Preview 放宽来源检查。多域名同时使用代理时，部署独立 Worker 并分别设置来源。Origin 不是身份认证，仍需限流、WAF、用量预算及告警。
+**生产站点仍只接受 `SITE_ORIGIN` 配置的一个精确 Origin，不接受 `*` 或逗号分隔列表。** 生产域名、`pages.dev`、Preview URL、GitHub Pages 是不同来源；只授权你实际使用的那个域名。不要为支持任意 Preview 放宽来源检查。多域名同时使用代理时，部署独立 Worker 并分别设置来源。
+
+**本地开发例外**：额外放行 HTTP(S) `localhost` 的任意有效端口，例如 `http://localhost:4200`、`http://localhost:5173`、`https://localhost:8443`；无须改变生产 `SITE_ORIGIN`。前端 `npm run dev` 和 `npm run preview` 默认使用 `4200`，用 `http://localhost:4200/` 访问。验证预检时可把上面 curl 的 Origin 替换为 `http://localhost:4200`，应返回 `204` 并回显同一 Origin。
+
+该例外不包括 `127.0.0.1`、`[::1]`、子域名或 `localhost.evil.com`，也不允许带凭据、路径、查询参数的 Origin。`SITE_ORIGIN` 与 `RATE_LIMITER` 仍必需，代理上游也仍禁止本地地址。更新后需要重新部署 Worker。允许任意 localhost 端口意味着其他本地网页也能使用该代理；Origin 不是身份认证，仍需限流、WAF、用量预算及告警。
 
 ## 工作流与本地检查
 

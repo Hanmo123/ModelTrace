@@ -1,6 +1,7 @@
 export default defineNuxtConfig({
   ssr: false,
   devtools: { enabled: false },
+  devServer: { port: 4200 },
   runtimeConfig: {
     public: { proxyUrl: process.env.NUXT_PUBLIC_PROXY_URL || "" },
   },

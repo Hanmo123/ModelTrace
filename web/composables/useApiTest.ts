@@ -7,6 +7,7 @@ import {
   type AnalysisResult,
 } from "@/lib/fingerprint";
 import type { EndpointPreset } from "@/composables/usePresets";
+import { createTaskQueue } from "../lib/task-queue";
 
 export type StepState =
   "pending" | "working" | "done" | "invalid" | "error" | "skipped";
@@ -33,6 +34,8 @@ const TARGET_VALID = 3;
 const MAX_ATTEMPTS = 3;
 const SUCCESS_PROBABILITY = 0.99;
 const BATCH_CONCURRENCY = 2;
+// Shared by every useApiTest() instance, including single-model clicks.
+const testQueue = createTaskQueue<PresetRunState>(BATCH_CONCURRENCY);
 
 function describeError(error: unknown, apiKey: string): string {
   const message = error instanceof Error ? error.message : String(error);
@@ -66,15 +69,31 @@ export function useApiTest() {
     runStates.value = rest;
   }
 
-  async function runPreset(
+  function isBusy(id: string) {
+    return isRunning(id) || queuedIds.value.includes(id);
+  }
+
+  function runPreset(
     input: EndpointPreset,
     proxyBaseURL?: string,
   ): Promise<PresetRunState> {
-    if (!bank.value) throw new Error("指纹库尚未加载完成");
-    if (isRunning(input.id)) return runStates.value[input.id]!;
-    // 固定本轮配置与指纹库，不受后续编辑影响。
+    if (!bank.value) return Promise.reject(new Error("指纹库尚未加载完成"));
+    // Freeze connection, model and bank when enqueued, not when a slot opens.
     const preset = { ...input };
     const currentBank = bank.value;
+    if (!testQueue.has(preset.id))
+      queuedIds.value = [...queuedIds.value, preset.id];
+    return testQueue.enqueue(preset.id, () => {
+      queuedIds.value = queuedIds.value.filter((id) => id !== preset.id);
+      return executePreset(preset, proxyBaseURL, currentBank);
+    });
+  }
+
+  async function executePreset(
+    preset: EndpointPreset,
+    proxyBaseURL: string | undefined,
+    currentBank: NonNullable<typeof bank.value>,
+  ): Promise<PresetRunState> {
     const challenges = generateChallenges(MAX_ATTEMPTS);
     // 必须通过代理更新，不能修改放入 useState 前的原始对象。
     const state = reactive<PresetRunState>({
@@ -188,31 +207,22 @@ export function useApiTest() {
   }
 
   async function runBatch(presets: EndpointPreset[], proxyBaseURL?: string) {
-    if (batchRunning.value) return;
+    if (batchRunning.value) return [];
     if (!bank.value) throw new Error("指纹库尚未加载完成");
-    const queue = presets
-      .filter((preset) => !isRunning(preset.id))
-      .map((preset) => ({ ...preset }));
+    const targets: EndpointPreset[] = [];
+    const seen = new Set<string>();
+    for (const preset of presets) {
+      if (testQueue.has(preset.id) || seen.has(preset.id)) continue;
+      seen.add(preset.id);
+      targets.push({ ...preset });
+    }
     batchRunning.value = true;
-    queuedIds.value = queue.map((preset) => preset.id);
     try {
-      await Promise.all(
-        Array.from(
-          { length: Math.min(BATCH_CONCURRENCY, queue.length) },
-          async () => {
-            while (queue.length) {
-              const preset = queue.shift()!;
-              queuedIds.value = queuedIds.value.filter(
-                (id) => id !== preset.id,
-              );
-              await runPreset(preset, proxyBaseURL);
-            }
-          },
-        ),
+      return await Promise.all(
+        targets.map((preset) => runPreset(preset, proxyBaseURL)),
       );
     } finally {
       batchRunning.value = false;
-      queuedIds.value = [];
     }
   }
 
@@ -221,6 +231,7 @@ export function useApiTest() {
     batchRunning,
     queuedIds,
     isRunning,
+    isBusy,
     runPreset,
     runBatch,
     clearRun,

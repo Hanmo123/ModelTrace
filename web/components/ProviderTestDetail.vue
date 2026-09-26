@@ -50,8 +50,11 @@ const labels: Record<StepState, string> = {
         <ResultPanel :result="terminal.result" />
       </template>
       <template v-else-if="run?.result">
+        <p v-if="queued" class="px-1 text-xs text-muted-foreground">
+          上轮归因结果 · 新一轮测试正在排队
+        </p>
         <p
-          v-if="run.status === 'running'"
+          v-else-if="run.status === 'running'"
           class="px-1 text-xs text-muted-foreground"
         >
           已有初步结果，概率达到 99% 即结束，否则继续测试剩余题目。
@@ -65,14 +68,13 @@ const labels: Record<StepState, string> = {
       class="flex flex-wrap items-start justify-between gap-3 rounded-md border p-3.5"
     >
       <div class="flex min-w-0 flex-col gap-1.5">
-        <h2 class="break-all text-sm font-semibold">
-          {{ presetLabel(preset) }}
+        <h2 class="break-all font-mono text-sm font-semibold">
+          {{ preset.model }}
         </h2>
         <p class="break-all text-xs text-muted-foreground">
-          {{ preset.baseUrl }}
+          {{ presetLabel(preset) }} · {{ preset.baseUrl }}
         </p>
         <p class="break-all text-xs text-muted-foreground">
-          模型 ID：{{ preset.model }} ·
           {{
             preset.apiType === "responses"
               ? "Responses API"
@@ -170,7 +172,7 @@ const labels: Record<StepState, string> = {
         <EmptyMedia variant="icon"><ScanSearch /></EmptyMedia>
         <EmptyTitle>{{ queued ? "等待开始" : "准备开始测试" }}</EmptyTitle>
         <EmptyDescription
-          >使用 AI SDK 调用此服务商，最多测试 3 题。
+          >使用 AI SDK 测试当前模型，最多调用 3 题。每个模型独立记录结果。
           第一份有效回答返回后即可展示初步归因；概率达到 99%
           即成功检验并停止后续调用。</EmptyDescription
         >

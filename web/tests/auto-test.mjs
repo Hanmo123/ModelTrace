@@ -186,7 +186,6 @@ try {
     await fill("#preset-api-key", `sk-test-${model}`);
     await fill("#preset-model", model);
     if (protocol === "responses") {
-      await page.click("[role=dialog] summary");
       await page.click("#preset-protocol");
       await clickText("Responses API", "[role=option]");
       await page.waitForFunction(
@@ -202,7 +201,7 @@ try {
   assert.equal(
     await page.evaluate(
       () =>
-        JSON.parse(localStorage.getItem("modeltrace.presets.v1")).presets
+        JSON.parse(localStorage.getItem("modeltrace.presets.v2")).presets
           .length,
     ),
     4,
@@ -320,7 +319,7 @@ try {
   await clickText("删除", "[role=alertdialog] button");
   await page.waitForFunction(
     () =>
-      JSON.parse(localStorage.getItem("modeltrace.presets.v1")).presets
+      JSON.parse(localStorage.getItem("modeltrace.presets.v2")).presets
         .length === 3,
   );
   await page.click('button[aria-label="编辑 Responses Provider"]');
@@ -338,7 +337,7 @@ try {
   assert.equal(
     await page.evaluate(
       () =>
-        JSON.parse(localStorage.getItem("modeltrace.presets.v1")).presets
+        JSON.parse(localStorage.getItem("modeltrace.presets.v2")).presets
           .length,
     ),
     3,
