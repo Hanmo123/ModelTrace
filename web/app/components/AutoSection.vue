@@ -23,6 +23,9 @@ import {
 } from "@/components/ui/alert-dialog";
 import {
   invalidatedModelRuns,
+  channelTargets,
+  targetLabel,
+  type ProviderChannel,
   presetLabel,
   providerTargets,
   type ModelTarget,
@@ -51,11 +54,17 @@ const {
   storageError: routingStorageError,
 } = useDirectRouting();
 const directBlocked = computed(
-  () => new Set(targets.value.filter(isDirectBlocked).map((target) => target.id)),
+  () =>
+    new Set(targets.value.filter(isDirectBlocked).map((target) => target.id)),
 );
 const queued = computed(() => new Set(queuedIds.value));
 const busyModels = computed(
-  () => new Set(targets.value.filter((target) => isBusy(target.id)).map((target) => target.id)),
+  () =>
+    new Set(
+      targets.value
+        .filter((target) => isBusy(target.id))
+        .map((target) => target.id),
+    ),
 );
 const busyProviders = computed(
   () =>
@@ -72,6 +81,7 @@ const selected = computed(
 );
 const dialogOpen = ref(false);
 const editing = ref<ProviderPreset | null>(null);
+const editingChannelId = ref<string>();
 const deleting = ref<ProviderPreset | null>(null);
 const deleteOpen = ref(false);
 const proxyBaseURL = useRuntimeConfig().public.proxyUrl as string;
@@ -88,6 +98,14 @@ const pendingTest = ref<{ targets: ModelTarget[]; batch: boolean } | null>(
 const pendingProviderCount = computed(
   () =>
     new Set(pendingTest.value?.targets.map((target) => target.providerId)).size,
+);
+const pendingChannelCount = computed(
+  () =>
+    new Set(
+      pendingTest.value?.targets.map((target) =>
+        JSON.stringify([target.providerId, target.channelId]),
+      ),
+    ).size,
 );
 const terminalOpen = ref(false);
 const terminalPreset = ref<ModelTarget | null>(null);
@@ -123,9 +141,10 @@ function locked(providerId: string) {
     proxyOpen.value || batchRunning.value || busyProviders.value.has(providerId)
   );
 }
-function configure(preset: ProviderPreset | null = null) {
+function configure(preset: ProviderPreset | null = null, channelId?: string) {
   if (proxyOpen.value || (preset && locked(preset.id))) return;
   editing.value = preset;
+  editingChannelId.value = channelId;
   dialogOpen.value = true;
 }
 function clearResult(id: string) {
@@ -159,7 +178,7 @@ function confirmDelete() {
   removePreset(deleting.value.id);
   deleting.value = null;
   deleteOpen.value = false;
-  toast.success("服务商及其模型已删除");
+  toast.success("服务商及其渠道、模型已删除");
 }
 
 function requestTests(input: ModelTarget[], batch: boolean) {
@@ -181,7 +200,10 @@ function test(target: ModelTarget) {
 }
 function testProvider(provider: ProviderPreset) {
   const list = providerTargets(provider);
-  requestTests(list, list.length > 1);
+  requestTests(list, true);
+}
+function testChannel(provider: ProviderPreset, channel: ProviderChannel) {
+  requestTests(channelTargets(provider, channel), true);
 }
 function testAll() {
   requestTests(targets.value, true);
@@ -232,9 +254,7 @@ async function executeTests(
       const target = list[0]!;
       const state = await runPreset(target, proxyURL);
       if (state.status === "failed")
-        toast.error(
-          `「${presetLabel(target)} · ${target.model}」测试失败，请查看详情`,
-        );
+        toast.error(`「${targetLabel(target)}」测试失败，请查看详情`);
     }
   } catch (error) {
     toast.error(error instanceof Error ? error.message : "无法开始测试");
@@ -252,7 +272,7 @@ async function executeTests(
       <div class="flex flex-wrap items-baseline gap-x-2 gap-y-1">
         <h1 class="text-sm font-semibold">自动测试</h1>
         <span class="text-xs text-muted-foreground"
-          >{{ presets.length }} 个服务商 · {{ targets.length }} 个模型</span
+          >{{ presets.length }} 个服务商</span
         >
         <span class="text-xs text-muted-foreground">{{
           proxyAllowed ? "服务端代理已授权" : "浏览器直连"
@@ -313,10 +333,9 @@ async function executeTests(
         <Empty v-if="!presets.length" class="min-h-60 rounded-md border">
           <EmptyHeader>
             <EmptyMedia variant="icon"><Server /></EmptyMedia>
-            <EmptyTitle>一个连接，多个模型</EmptyTitle>
+            <EmptyTitle>一个服务商，多个渠道</EmptyTitle>
             <EmptyDescription
-              >填写服务商的 Endpoint 和 API
-              Key，一次添加多个模型。按模型查看结果，按服务商批量测试。</EmptyDescription
+              >为服务商添加多个渠道，分别配置密钥、倍率和模型。点击模型小卡片查看结果，或按渠道、服务商批量测试。</EmptyDescription
             >
           </EmptyHeader>
           <EmptyContent class="flex-row flex-wrap justify-center gap-2">
@@ -346,7 +365,9 @@ async function executeTests(
           @select="selectTarget"
           @test="test"
           @test-provider="testProvider(preset)"
+          @test-channel="testChannel(preset, $event)"
           @edit="configure(preset)"
+          @edit-channel="configure(preset, $event)"
           @remove="
             deleting = preset;
             deleteOpen = true;
@@ -355,7 +376,8 @@ async function executeTests(
         <p class="px-1 text-xs leading-relaxed text-muted-foreground">
           每个模型最多 3 题，归因概率达到 99% 即停止后续调用。单个与批量测试共用
           2 个并发名额，其他模型自动排队。批量测试优先直连；网络/CORS
-          失败会按模型记住，并在已授权时回退代理。重试同一道题可能额外消耗 API 额度。
+          失败会按模型记住，并在已授权时回退代理。重试同一道题可能额外消耗 API
+          额度。
         </p>
       </section>
       <section
@@ -387,7 +409,7 @@ async function executeTests(
             <EmptyMedia variant="icon"><Server /></EmptyMedia>
             <EmptyTitle>模型测试详情</EmptyTitle>
             <EmptyDescription
-              >选择左侧服务商下的模型，在这里查看独立的挑战、模型回答和归因结果。</EmptyDescription
+              >选择左侧渠道下的模型，在这里查看独立的挑战、模型回答和归因结果。</EmptyDescription
             >
           </EmptyHeader>
         </Empty>
@@ -406,9 +428,10 @@ async function executeTests(
             {{ pendingTest?.targets.length || 0 }} 个模型（{{
               pendingProviderCount
             }}
-            个服务商）。
+            个服务商、{{ pendingChannelCount }} 个渠道）。
             <template v-if="pendingTest?.batch">
-              批量测试优先直连每个模型；发生网络/CORS 错误，或已有直连失败标记时，才会使用代理。
+              批量测试优先直连每个模型；发生网络/CORS
+              错误，或已有直连失败标记时，才会使用代理。
             </template>
             使用代理时，你的 API Key、模型 ID 和挑战提示词将发送到
             {{ proxyBaseURL }}，再由该服务器请求服务商。
@@ -419,13 +442,9 @@ async function executeTests(
         <AlertDialogFooter
           ><AlertDialogCancel @click="declineProxy"
             >仅本次直连</AlertDialogCancel
-          ><AlertDialogAction @click="consentProxy"
-            >{{
-              pendingTest?.batch
-                ? "同意并允许代理回退"
-                : "同意并通过代理测试"
-            }}</AlertDialogAction
-          ></AlertDialogFooter
+          ><AlertDialogAction @click="consentProxy">{{
+            pendingTest?.batch ? "同意并允许代理回退" : "同意并通过代理测试"
+          }}</AlertDialogAction></AlertDialogFooter
         >
       </AlertDialogContent>
     </AlertDialog>
@@ -438,6 +457,7 @@ async function executeTests(
       v-if="dialogOpen"
       v-model:open="dialogOpen"
       :preset="editing"
+      :initial-channel-id="editingChannelId"
       :disabled="!!editing && locked(editing.id)"
       @save="save"
     />
@@ -447,10 +467,8 @@ async function executeTests(
           <AlertDialogTitle>删除服务商</AlertDialogTitle>
           <AlertDialogDescription
             >确定删除「{{ deleting ? presetLabel(deleting) : "" }}」的全部
-            {{
-              deleting?.models.length || 0
-            }}
-            个模型及其测试结果吗？此操作不可撤销。</AlertDialogDescription
+            {{ deleting ? providerTargets(deleting).length : 0 }}
+            个模型、全部渠道及其测试结果吗？此操作不可撤销。</AlertDialogDescription
           >
         </AlertDialogHeader>
         <AlertDialogFooter

@@ -12,12 +12,12 @@ import {
 } from "@/components/ui/empty";
 import { Progress } from "@/components/ui/progress";
 import { Separator } from "@/components/ui/separator";
-import { presetLabel, type EndpointPreset } from "@/composables/usePresets";
+import { presetLabel, type ModelTarget } from "@/composables/usePresets";
 import type { PresetRunState, StepState } from "@/composables/useApiTest";
 import type { TerminalSession } from "@/composables/useTerminalTest";
 
 defineProps<{
-  preset: EndpointPreset;
+  preset: ModelTarget;
   run?: PresetRunState;
   terminal?: TerminalSession;
   terminalAvailable: boolean;
@@ -73,7 +73,8 @@ const labels: Record<StepState, string> = {
           {{ preset.model }}
         </h2>
         <p class="break-all text-xs text-muted-foreground">
-          {{ presetLabel(preset) }} · {{ preset.baseUrl }}
+          {{ presetLabel(preset) }} · {{ preset.channelName }} ·
+          {{ preset.multiplier }}× · {{ preset.baseUrl }}
         </p>
         <p class="break-all text-xs text-muted-foreground">
           {{
@@ -81,7 +82,6 @@ const labels: Record<StepState, string> = {
               ? "Responses API"
               : "Chat Completions"
           }}
-          · 密钥已配置
           <span v-if="run">
             ·
             {{
@@ -238,7 +238,8 @@ const labels: Record<StepState, string> = {
           <pre
             v-if="run.outputs[index]"
             class="max-h-56 overflow-auto whitespace-pre-wrap break-words rounded-sm border bg-muted/40 p-3 font-mono text-xs leading-relaxed"
-            >{{ run.outputs[index] }}</pre>
+            >{{ run.outputs[index] }}</pre
+          >
           <p v-else class="text-xs text-muted-foreground">
             {{
               run.steps[index] === "working"

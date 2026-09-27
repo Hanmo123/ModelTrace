@@ -234,7 +234,7 @@ try {
   assert.equal(
     await page.evaluate(
       () =>
-        JSON.parse(localStorage.getItem("modeltrace.presets.v2")).presets
+        JSON.parse(localStorage.getItem("modeltrace.presets.v3")).presets
           .length,
     ),
     4,
@@ -352,7 +352,7 @@ try {
   await clickText("删除", "[role=alertdialog] button");
   await page.waitForFunction(
     () =>
-      JSON.parse(localStorage.getItem("modeltrace.presets.v2")).presets
+      JSON.parse(localStorage.getItem("modeltrace.presets.v3")).presets
         .length === 3,
   );
   await page.click('button[aria-label="编辑 Responses Provider"]');
@@ -376,7 +376,7 @@ try {
   assert.equal(
     await page.evaluate(
       () =>
-        JSON.parse(localStorage.getItem("modeltrace.presets.v2")).presets
+        JSON.parse(localStorage.getItem("modeltrace.presets.v3")).presets
           .length,
     ),
     3,

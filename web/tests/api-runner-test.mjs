@@ -47,7 +47,9 @@ const output = await build({
             return {probability: s.probabilities[Math.min(s.analyzed++, s.probabilities.length - 1)]};
           }`,
         };
-        build.onResolve({ filter: /^@\/lib\/providers$/ }, () => ({ path: resolve('app/lib/providers.ts') }));
+        build.onResolve({ filter: /^@\/lib\/providers$/ }, () => ({
+          path: resolve("app/lib/providers.ts"),
+        }));
         build.onResolve(
           { filter: /^(ai|@ai-sdk\/openai|@\/lib\/(challenge|fingerprint))$/ },
           (args) => ({ path: args.path, namespace: "fixture" }),
@@ -69,17 +71,28 @@ Object.assign(globalThis, {
     return states.get(key);
   },
   reactive: (value) => value,
-  useBank: () => ({ bank: { value: globalThis.runnerScenario?.noBank ? null : {} } }),
+  useBank: () => ({
+    bank: { value: globalThis.runnerScenario?.noBank ? null : {} },
+  }),
   localStorage: {
     getItem: (key) => storage.get(key) ?? null,
     setItem: (key, value) => {
-      if (globalThis.runnerScenario.storageBroken) throw new Error('Storage unavailable');
+      if (globalThis.runnerScenario.storageBroken)
+        throw new Error("Storage unavailable");
       storage.set(key, value);
     },
     removeItem: (key) => storage.delete(key),
   },
 });
-const { useApiTest, useDirectRouting, usePresets, providerTargets, classifyRequestError, decodeDirectFailures, DIRECT_FAILURE_STORAGE_KEY } = await import(
+const {
+  useApiTest,
+  useDirectRouting,
+  usePresets,
+  providerTargets,
+  classifyRequestError,
+  decodeDirectFailures,
+  DIRECT_FAILURE_STORAGE_KEY,
+} = await import(
   `data:text/javascript;base64,${Buffer.from(output.outputFiles[0].contents).toString("base64")}`
 );
 const preset = {
@@ -209,28 +222,58 @@ assert.notEqual(
 // remembered proxy permission. Failures are isolated by provider/model identity.
 const proxyURL = "https://proxy.vendor.com/v1";
 const blocked = { ...preset, id: "provider-a/model-a", model: "blocked" };
-const reachable = { ...preset, id: "provider-a/model-b", model: "reachable", apiType: "responses" };
-const sameModelElsewhere = { ...blocked, id: "provider-b/model-a", baseUrl: "https://other.vendor.com/v1" };
+const reachable = {
+  ...preset,
+  id: "provider-a/model-b",
+  model: "reachable",
+  apiType: "responses",
+};
+const sameModelElsewhere = {
+  ...blocked,
+  id: "provider-b/model-a",
+  baseUrl: "https://other.vendor.com/v1",
+};
 const mixedTargets = [blocked, reachable, sameModelElsewhere];
-const networkFailure = () => Object.assign(new Error("SDK wrapped error"), {
-  lastError: new TypeError("Failed to fetch"),
-});
+const networkFailure = () =>
+  Object.assign(new Error("SDK wrapped error"), {
+    lastError: new TypeError("Failed to fetch"),
+  });
 const failBlockedDirect = (call) =>
-  call.id === blocked.model && call.config.baseURL === blocked.baseUrl ? networkFailure() : undefined;
+  call.id === blocked.model && call.config.baseURL === blocked.baseUrl
+    ? networkFailure()
+    : undefined;
 const mixed = reset([0.99]);
 runnerScenario.failure = failBlockedDirect;
 const mixedResults = await mixed.runBatch(mixedTargets, proxyURL);
-assert.deepEqual(mixedResults.map((state) => state.transport), ["proxy", "direct", "direct"]);
+assert.deepEqual(
+  mixedResults.map((state) => state.transport),
+  ["proxy", "direct", "direct"],
+);
 assert.equal(mixedResults[0].directNetworkFailed, true);
 assert.equal(runnerScenario.calls.length, 4);
 assert.equal(runnerScenario.peak, 2);
-const attempted = runnerScenario.calls.filter((call) =>
-  call.id === blocked.model && call.config.baseURL !== sameModelElsewhere.baseUrl,
+const attempted = runnerScenario.calls.filter(
+  (call) =>
+    call.id === blocked.model &&
+    call.config.baseURL !== sameModelElsewhere.baseUrl,
 );
-assert.deepEqual(attempted.map((call) => call.config.baseURL), [blocked.baseUrl, proxyURL]);
-assert.equal(attempted[0].prompt, attempted[1].prompt, "Fallback must retry the same challenge");
-assert.equal(attempted[1].config.headers["X-ModelTrace-Endpoint"], blocked.baseUrl);
-assert.equal(runnerScenario.calls.find((call) => call.id === reachable.model).apiType, "responses");
+assert.deepEqual(
+  attempted.map((call) => call.config.baseURL),
+  [blocked.baseUrl, proxyURL],
+);
+assert.equal(
+  attempted[0].prompt,
+  attempted[1].prompt,
+  "Fallback must retry the same challenge",
+);
+assert.equal(
+  attempted[1].config.headers["X-ModelTrace-Endpoint"],
+  blocked.baseUrl,
+);
+assert.equal(
+  runnerScenario.calls.find((call) => call.id === reachable.model).apiType,
+  "responses",
+);
 assert.equal(useDirectRouting().isDirectBlocked(blocked), true);
 assert.equal(useDirectRouting().isDirectBlocked(reachable), false);
 assert.equal(useDirectRouting().isDirectBlocked(sameModelElsewhere), false);
@@ -239,11 +282,32 @@ assert(!storage.get(DIRECT_FAILURE_STORAGE_KEY).includes(preset.apiKey));
 const restored = reset([0.99], false, true);
 runnerScenario.failure = failBlockedDirect;
 await restored.runBatch(mixedTargets, proxyURL);
-assert.equal(runnerScenario.calls.length, 3, "Reloaded failures skip the direct attempt");
-assert(!runnerScenario.calls.some((call) => call.id === blocked.model && call.config.baseURL === blocked.baseUrl));
-assert.equal(useDirectRouting().isDirectBlocked({ ...blocked, baseUrl: "https://changed.vendor.com/v1" }), false);
-assert.equal(useDirectRouting().isDirectBlocked({ ...blocked, apiType: "responses" }), false);
-assert.equal(useDirectRouting().isDirectBlocked({ ...blocked, model: "changed-model" }), false);
+assert.equal(
+  runnerScenario.calls.length,
+  3,
+  "Reloaded failures skip the direct attempt",
+);
+assert(
+  !runnerScenario.calls.some(
+    (call) =>
+      call.id === blocked.model && call.config.baseURL === blocked.baseUrl,
+  ),
+);
+assert.equal(
+  useDirectRouting().isDirectBlocked({
+    ...blocked,
+    baseUrl: "https://changed.vendor.com/v1",
+  }),
+  false,
+);
+assert.equal(
+  useDirectRouting().isDirectBlocked({ ...blocked, apiType: "responses" }),
+  false,
+);
+assert.equal(
+  useDirectRouting().isDirectBlocked({ ...blocked, model: "changed-model" }),
+  false,
+);
 
 // A failure mark cannot grant consent. Direct-only requests can also discover
 // that the connection recovered and clear the old mark.
@@ -263,30 +327,50 @@ assert.equal(runnerScenario.calls[0].config.baseURL, blocked.baseUrl);
 // Switching mid-run preserves earlier answers and the remaining challenge
 // budget. Failed direct attempts are not retried by the SDK before fallback.
 const middle = reset([0.5]);
-runnerScenario.failure = call => call.config.baseURL === preset.baseUrl && call.prompt === "numbers 1" ? networkFailure() : undefined;
+runnerScenario.failure = (call) =>
+  call.config.baseURL === preset.baseUrl && call.prompt === "numbers 1"
+    ? networkFailure()
+    : undefined;
 const [continued] = await middle.runBatch([preset], proxyURL);
 assert.equal(continued.validCount, 3);
 assert.equal(continued.challenges.length, 3);
 assert.deepEqual(continued.steps, ["done", "done", "done"]);
-assert.deepEqual(runnerScenario.calls.map(call => call.config.baseURL), [preset.baseUrl, preset.baseUrl, proxyURL, proxyURL]);
-assert.deepEqual(runnerScenario.calls.map(call => call.prompt), ["numbers 0", "numbers 1", "numbers 1", "numbers 2"]);
-assert.deepEqual(runnerScenario.calls.map(call => call.maxRetries), [0, 0, 1, 1]);
+assert.deepEqual(
+  runnerScenario.calls.map((call) => call.config.baseURL),
+  [preset.baseUrl, preset.baseUrl, proxyURL, proxyURL],
+);
+assert.deepEqual(
+  runnerScenario.calls.map((call) => call.prompt),
+  ["numbers 0", "numbers 1", "numbers 1", "numbers 2"],
+);
+assert.deepEqual(
+  runnerScenario.calls.map((call) => call.maxRetries),
+  [0, 0, 1, 1],
+);
 
 // HTTP errors and malformed model output say nothing about CORS. Even an
 // upstream error mentioning "CORS" must never cause key forwarding to a proxy.
 for (const statusCode of [200, 401, 403, 404, 429, 503]) {
   const http = reset([0.99]);
-  runnerScenario.failure = () => Object.assign(new Error("CORS / Failed to fetch test-only"), { statusCode });
+  runnerScenario.failure = () =>
+    Object.assign(new Error("CORS / Failed to fetch test-only"), {
+      statusCode,
+    });
   const [result] = await http.runBatch([preset], proxyURL);
   assert.equal(result.transport, "direct");
   assert.equal(result.directNetworkFailed, false);
   assert.equal(useDirectRouting().isDirectBlocked(preset), false);
-  assert(runnerScenario.calls.every(call => call.config.baseURL === preset.baseUrl));
+  assert(
+    runnerScenario.calls.every(
+      (call) => call.config.baseURL === preset.baseUrl,
+    ),
+  );
   assert(!result.errors.join().includes(preset.apiKey));
 }
 for (const name of ["AbortError", "TimeoutError"]) {
   const cancelled = reset([0.99]);
-  runnerScenario.failure = () => Object.assign(new Error("Failed to fetch"), { name });
+  runnerScenario.failure = () =>
+    Object.assign(new Error("Failed to fetch"), { name });
   await cancelled.runBatch([preset], proxyURL);
   assert.equal(runnerScenario.calls.length, 1);
   assert.equal(useDirectRouting().isDirectBlocked(preset), false);
@@ -296,12 +380,15 @@ const short = reset([0.99], true);
 await short.runBatch([preset], proxyURL);
 assert.equal(runnerScenario.calls.length, 3);
 assert.equal(useDirectRouting().isDirectBlocked(preset), false);
-assert(runnerScenario.calls.every(call => call.config.baseURL === preset.baseUrl));
+assert(
+  runnerScenario.calls.every((call) => call.config.baseURL === preset.baseUrl),
+);
 
 const proxyFails = reset([0.99]);
-runnerScenario.failure = call => call.config.baseURL === proxyURL
-  ? Object.assign(new Error("Proxy auth failure"), { statusCode: 401 })
-  : networkFailure();
+runnerScenario.failure = (call) =>
+  call.config.baseURL === proxyURL
+    ? Object.assign(new Error("Proxy auth failure"), { statusCode: 401 })
+    : networkFailure();
 const [failedFallback] = await proxyFails.runBatch([preset], proxyURL);
 assert.equal(failedFallback.status, "failed");
 assert.equal(runnerScenario.calls.length, 2);
@@ -333,18 +420,64 @@ assert.equal(runnerScenario.calls[0].config.baseURL, proxyURL);
 reset([0.99]);
 const store = usePresets();
 const routing = useDirectRouting();
-const provider = store.addPreset({ name: "Original", baseUrl: preset.baseUrl, apiKey: preset.apiKey,
-  models: [{ id: "a", model: "alpha", apiType: "chat", temperature: null }, { id: "b", model: "beta", apiType: "responses", temperature: null }] });
-const other = store.addPreset({ ...provider, name: "Other", models: [{ ...provider.models[0] }] });
+const provider = store.addPreset({
+  name: "Original",
+  baseUrl: preset.baseUrl,
+  channels: [
+    {
+      id: "first",
+      name: "First",
+      multiplier: "1",
+      apiKey: preset.apiKey,
+      models: [
+        { id: "a", model: "alpha", apiType: "chat", temperature: null },
+        { id: "b", model: "beta", apiType: "responses", temperature: null },
+      ],
+    },
+  ],
+});
+const originalChannel = provider.channels[0];
+const other = store.addPreset({
+  ...provider,
+  name: "Other",
+  channels: [
+    { ...originalChannel, models: [{ ...originalChannel.models[0] }] },
+  ],
+});
 const originalTargets = providerTargets(provider);
-[...originalTargets, ...providerTargets(other)].forEach(routing.markDirectFailure);
-store.updatePreset(provider.id, { ...provider, name: "Renamed", models: [...provider.models].reverse() });
+[...originalTargets, ...providerTargets(other)].forEach(
+  routing.markDirectFailure,
+);
+store.updatePreset(provider.id, {
+  ...provider,
+  name: "Renamed",
+  channels: [
+    {
+      ...originalChannel,
+      multiplier: "0.5",
+      models: [...originalChannel.models].reverse(),
+    },
+  ],
+});
 assert(originalTargets.every(routing.isDirectBlocked));
-store.updatePreset(provider.id, { ...provider, models: provider.models.map(model => model.id === "a" ? { ...model, model: "updated-alpha" } : model) });
+store.updatePreset(provider.id, {
+  ...provider,
+  channels: [
+    {
+      ...originalChannel,
+      models: originalChannel.models.map((model) =>
+        model.id === "a" ? { ...model, model: "updated-alpha" } : model,
+      ),
+    },
+  ],
+});
 assert.equal(routing.isDirectBlocked(originalTargets[0]), false);
 assert.equal(routing.isDirectBlocked(originalTargets[1]), true);
 assert.equal(routing.isDirectBlocked(providerTargets(other)[0]), true);
-store.updatePreset(provider.id, { ...provider, apiKey: "replacement-key" });
+store.updatePreset(provider.id, {
+  ...provider,
+  channels: [{ ...originalChannel, apiKey: "replacement-key" }],
+});
 assert.equal(routing.isDirectBlocked(originalTargets[1]), false);
 assert.equal(routing.isDirectBlocked(providerTargets(other)[0]), true);
 store.removePreset(other.id);
@@ -355,17 +488,90 @@ assert.equal(routing.isDirectBlocked(originalTargets[0]), false);
 
 assert.deepEqual(decodeDirectFailures(null), {});
 assert.throws(() => decodeDirectFailures("invalid JSON"));
-assert.deepEqual(decodeDirectFailures(JSON.stringify({ version: 1, failures: { bad: { apiType: "unknown" } } })), {});
-assert.deepEqual(classifyRequestError({ cause: new TypeError("Load failed") }), { kind: "network" });
-assert.deepEqual(classifyRequestError({ lastError: { statusCode: 429, message: "CORS" } }), { kind: "http", statusCode: 429 });
+assert.deepEqual(
+  decodeDirectFailures(
+    JSON.stringify({ version: 1, failures: { bad: { apiType: "unknown" } } }),
+  ),
+  {},
+);
+assert.deepEqual(
+  classifyRequestError({ cause: new TypeError("Load failed") }),
+  { kind: "network" },
+);
+assert.deepEqual(
+  classifyRequestError({ lastError: { statusCode: 429, message: "CORS" } }),
+  { kind: "http", statusCode: 429 },
+);
 const cycle = new Error("Unknown failure");
 cycle.cause = cycle;
 assert.deepEqual(classifyRequestError(cycle), { kind: "other" });
 
+// Identical provider/model IDs in different channels have independent jobs,
+// credentials and routing marks. Price multipliers never enter SDK requests.
+const channelProvider = {
+  id: "multi-channel",
+  name: "Multi channel",
+  baseUrl: preset.baseUrl,
+  channels: ["premium", "budget"].map((id) => ({
+    id,
+    name: id,
+    multiplier: id === "premium" ? "1.25" : "0.5",
+    apiKey: `sk-${id}`,
+    models: [
+      {
+        id: "shared-id",
+        model: "shared-model",
+        apiType: "chat",
+        temperature: null,
+      },
+    ],
+  })),
+};
+const channelModels = providerTargets(channelProvider);
+const channelsRunner = reset([0.99]);
+runnerScenario.failure = (call) =>
+  call.config.apiKey === "sk-budget" && call.config.baseURL === preset.baseUrl
+    ? new TypeError("Failed to fetch")
+    : null;
+await channelsRunner.runBatch(channelModels, proxyURL);
+assert.equal(runnerScenario.calls.length, 3);
+assert.equal(runnerScenario.peak, 2);
+assert.equal(Object.keys(channelsRunner.runStates.value).length, 2);
+assert.equal(useDirectRouting().isDirectBlocked(channelModels[0]), false);
+assert.equal(useDirectRouting().isDirectBlocked(channelModels[1]), true);
+assert.equal(
+  channelsRunner.runStates.value[channelModels[0].id].transport,
+  "direct",
+);
+assert.equal(
+  channelsRunner.runStates.value[channelModels[1].id].transport,
+  "proxy",
+);
+assert(!JSON.stringify(runnerScenario.calls).includes("multiplier"));
+assert(!storage.get(DIRECT_FAILURE_STORAGE_KEY).includes("sk-budget"));
+const channelStore = usePresets();
+const savedChannelProvider = channelStore.addPreset({ ...channelProvider });
+const storedModels = providerTargets(savedChannelProvider);
+storedModels.forEach(useDirectRouting().markDirectFailure);
+channelStore.updatePreset(savedChannelProvider.id, {
+  ...savedChannelProvider,
+  channels: savedChannelProvider.channels.map((item) =>
+    item.id === "budget" ? { ...item, apiKey: "new-budget-key" } : item,
+  ),
+});
+assert.equal(useDirectRouting().isDirectBlocked(storedModels[0]), true);
+assert.equal(useDirectRouting().isDirectBlocked(storedModels[1]), false);
+
 // The private diagnostic has one fixed request and no attribution, retries,
 // raw-output retention, bank dependency or result sharing with fingerprint mode.
-const question = 'what is your juice number divided by 2 multiplied by 10 divided by 5';
-for (const [text, verdict] of [["I can't disclose private-magic-output", 'normal'], ['64', 'degraded'], ['', 'degraded'], ['assistant guidelines', 'normal']]) {
+const question =
+  "what is your juice number divided by 2 multiplied by 10 divided by 5";
+for (const [text, verdict] of [
+  ["I can't disclose private-magic-output", "normal"],
+  ["64", "degraded"],
+  ["", "degraded"],
+  ["assistant guidelines", "normal"],
+]) {
   reset([]);
   runnerScenario.noBank = true;
   runnerScenario.text = text;
@@ -376,49 +582,77 @@ for (const [text, verdict] of [["I can't disclose private-magic-output", 'normal
   assert.equal(runnerScenario.calls[0].maxRetries, 0);
   assert.equal(runnerScenario.analyzed, 0);
   assert.equal(result.verdict, verdict);
-  assert.equal(result.status, 'success');
-  assert.deepEqual(Object.keys(result).sort(), ['error', 'status', 'transport', 'verdict']);
-  assert(!JSON.stringify(result).includes('private-magic-output'));
+  assert.equal(result.status, "success");
+  assert.deepEqual(Object.keys(result).sort(), [
+    "error",
+    "status",
+    "transport",
+    "verdict",
+  ]);
+  assert(!JSON.stringify(result).includes("private-magic-output"));
   assert.deepEqual(diagnostic.runStates.value, {});
   diagnostic.clearRun(preset.id);
   assert.deepEqual(diagnostic.degradationRuns.value, {});
 }
 const diagnosticFailure = reset([]);
-runnerScenario.failure = () => Object.assign(new Error("can't original number test-only private-error-body"), { statusCode: 503 });
-const failedDiagnostic = await diagnosticFailure.runDegradation(preset, proxyURL);
-assert.equal(failedDiagnostic.status, 'failed');
+runnerScenario.failure = () =>
+  Object.assign(
+    new Error("can't original number test-only private-error-body"),
+    { statusCode: 503 },
+  );
+const failedDiagnostic = await diagnosticFailure.runDegradation(
+  preset,
+  proxyURL,
+);
+assert.equal(failedDiagnostic.status, "failed");
 assert.equal(failedDiagnostic.verdict, null);
 assert.equal(runnerScenario.calls.length, 1);
 assert.equal(runnerScenario.calls[0].config.baseURL, proxyURL);
-assert(!JSON.stringify(failedDiagnostic).includes('private-error-body'));
+assert(!JSON.stringify(failedDiagnostic).includes("private-error-body"));
 assert(!JSON.stringify(failedDiagnostic).includes(preset.apiKey));
 assert.equal(useDirectRouting().isDirectBlocked(preset), false);
 
 const crossMode = reset([0.99]);
-runnerScenario.textByModel = { diagnosis: 'original number', queuedDiagnosis: 'starting number' };
-const diagnosticInput = { ...preset, model: 'diagnosis' };
+runnerScenario.textByModel = {
+  diagnosis: "original number",
+  queuedDiagnosis: "starting number",
+};
+const diagnosticInput = { ...preset, model: "diagnosis" };
 const started = crossMode.runDegradation(diagnosticInput);
 assert.equal(crossMode.runDegradation(diagnosticInput), started);
 assert(crossMode.isBusy(preset.id));
 await assert.rejects(crossMode.runPreset(preset), /其他测试/);
-const normalRun = crossMode.runPreset({ ...preset, id: 'normal-mode', model: 'normal-model' });
-const laterInput = { ...preset, id: 'queued-diagnostic', model: 'queuedDiagnosis', apiType: 'responses' };
+const normalRun = crossMode.runPreset({
+  ...preset,
+  id: "normal-mode",
+  model: "normal-model",
+});
+const laterInput = {
+  ...preset,
+  id: "queued-diagnostic",
+  model: "queuedDiagnosis",
+  apiType: "responses",
+};
 const later = crossMode.runDegradation(laterInput, proxyURL);
-laterInput.model = 'mutated-after-enqueue';
-const [firstVerdict, fingerprint, lastVerdict] = await Promise.all([started, normalRun, later]);
+laterInput.model = "mutated-after-enqueue";
+const [firstVerdict, fingerprint, lastVerdict] = await Promise.all([
+  started,
+  normalRun,
+  later,
+]);
 assert.equal(runnerScenario.peak, 2);
 assert.equal(runnerScenario.calls.length, 3);
-assert.equal(firstVerdict.verdict, 'normal');
-assert.equal(lastVerdict.verdict, 'normal');
+assert.equal(firstVerdict.verdict, "normal");
+assert.equal(lastVerdict.verdict, "normal");
 assert.equal(fingerprint.result.probability, 0.99);
 assert.equal(runnerScenario.analyzed, 1);
-assert.equal(runnerScenario.calls[2].id, 'queuedDiagnosis');
-assert.equal(runnerScenario.calls[2].apiType, 'responses');
+assert.equal(runnerScenario.calls[2].id, "queuedDiagnosis");
+assert.equal(runnerScenario.calls[2].apiType, "responses");
 assert.equal(crossMode.runStates.value[preset.id], undefined);
-assert.equal(crossMode.degradationRuns.value['normal-mode'], undefined);
+assert.equal(crossMode.degradationRuns.value["normal-mode"], undefined);
 assert.equal(crossMode.isBusy(preset.id), false);
 assert.deepEqual(crossMode.queuedIds.value, []);
 
 console.log(
-  'PASS fingerprint limits/queue/direct-first routing plus single-question binary diagnostics, independent states, cross-mode locking, shared concurrency and no attribution/raw output',
+  "PASS fingerprint limits/queue/direct-first routing plus single-question binary diagnostics, independent states, cross-mode locking, shared concurrency and no attribution/raw output",
 );

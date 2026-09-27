@@ -1,4 +1,4 @@
-import type { ApiType } from "./providers";
+import { DEFAULT_CHANNEL_ID, modelRunId, type ApiType } from "./providers";
 
 export const DIRECT_FAILURE_STORAGE_KEY = "modeltrace.direct-failures.v1";
 
@@ -20,6 +20,7 @@ export function decodeDirectFailures(
   if (!record(payload) || payload.version !== 1 || !record(payload.failures))
     throw new Error("不支持的直连状态格式");
   const entries: [string, DirectFailure][] = [];
+  const migrated: [string, DirectFailure][] = [];
   for (const [id, entry] of Object.entries(payload.failures)) {
     if (
       record(entry) &&
@@ -27,14 +28,33 @@ export function decodeDirectFailures(
       typeof entry.model === "string" &&
       (entry.apiType === "chat" || entry.apiType === "responses")
     ) {
-      entries.push([id, {
+      const failure: DirectFailure = {
         baseUrl: entry.baseUrl,
         model: entry.model,
         apiType: entry.apiType,
-      }]);
+      };
+      // v1/v2 providers had two-part identities. Their marks belong only to the
+      // migrated default channel, never to newly added channels with equal models.
+      try {
+        const parts: unknown = JSON.parse(id);
+        if (
+          Array.isArray(parts) &&
+          parts.length === 2 &&
+          parts.every((part) => typeof part === "string")
+        ) {
+          migrated.push([
+            modelRunId(parts[0]!, DEFAULT_CHANNEL_ID, parts[1]!),
+            failure,
+          ]);
+          continue;
+        }
+      } catch {
+        /* Non-tuple IDs remain supported for standalone callers. */
+      }
+      entries.push([id, failure]);
     }
   }
-  return Object.fromEntries(entries);
+  return Object.fromEntries([...migrated, ...entries]);
 }
 
 export function classifyRequestError(error: unknown): {
@@ -52,7 +72,8 @@ export function classifyRequestError(error: unknown): {
     const item = pending.pop();
     if (!record(item) || seen.has(item)) continue;
     seen.add(item);
-    const status = item.statusCode ??
+    const status =
+      item.statusCode ??
       (record(item.response) ? item.response.status : undefined);
     if (typeof status === "number" && status >= 100 && status <= 599)
       statusCode ??= status;
@@ -61,7 +82,9 @@ export function classifyRequestError(error: unknown): {
     if (
       item.name === "NetworkError" ||
       (typeof item.message === "string" &&
-        /failed to fetch|fetch failed|networkerror|network error|network request failed|load failed|\bcors\b/i.test(item.message))
+        /failed to fetch|fetch failed|networkerror|network error|network request failed|load failed|\bcors\b/i.test(
+          item.message,
+        ))
     )
       network = true;
     if (

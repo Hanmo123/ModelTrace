@@ -6,7 +6,12 @@ export default defineNuxtPlugin((nuxtApp) => {
   const { hostname, origin, pathname } = window.location;
   // Production artifacts are also used by local previews and browser tests.
   if (
-    !options?.enabled ||
+    !options ||
+    typeof options !== "object" ||
+    !("enabled" in options) ||
+    !options.enabled ||
+    !("id" in options) ||
+    typeof options.id !== "string" ||
     !options.id ||
     hostname === "localhost" ||
     hostname.endsWith(".localhost") ||

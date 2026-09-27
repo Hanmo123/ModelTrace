@@ -3,6 +3,7 @@ import {
   invalidatedModelRuns,
   providerTargets,
   LEGACY_PRESET_STORAGE_KEY,
+  PREVIOUS_PRESET_STORAGE_KEY,
   loadPresets,
   PRESET_STORAGE_KEY,
   type ProviderInput,
@@ -17,6 +18,7 @@ export type {
   EndpointPreset,
   ProviderInput,
   ProviderModel,
+  ProviderChannel,
   ProviderPreset,
   ModelTarget,
 } from "@/lib/providers";
@@ -27,7 +29,7 @@ export function usePresets() {
     "modeltrace:presets:storage-error",
     () => null,
   );
-  const presets = useState<ProviderPreset[]>("modeltrace:presets", () => {
+  const presets = useState<ProviderPreset[]>("modeltrace:presets:v3", () => {
     try {
       const loaded = loadPresets(localStorage);
       storageError.value = loaded.error;
@@ -48,14 +50,21 @@ export function usePresets() {
       return;
     }
     try {
+      localStorage.removeItem(PREVIOUS_PRESET_STORAGE_KEY);
       localStorage.removeItem(LEGACY_PRESET_STORAGE_KEY);
     } catch {
-      /* Best-effort cleanup after a durable v2 write. */
+      /* Best-effort cleanup after a durable v3 write. */
     }
   }
 
   function copy(input: ProviderInput): ProviderInput {
-    return { ...input, models: input.models.map((model) => ({ ...model })) };
+    return {
+      ...input,
+      channels: input.channels.map((channel) => ({
+        ...channel,
+        models: channel.models.map((model) => ({ ...model })),
+      })),
+    };
   }
 
   function addPreset(input: ProviderInput): ProviderPreset {

@@ -8,17 +8,24 @@ export interface ProviderModel {
   temperature: number | null;
 }
 
-export interface ProviderPreset {
+export interface ProviderChannel {
   id: string;
   name: string;
-  baseUrl: string;
+  /** Decimal string: display metadata, never a quality score or request parameter. */
+  multiplier: string;
   apiKey: string;
   models: ProviderModel[];
 }
 
+export interface ProviderPreset {
+  id: string;
+  name: string;
+  baseUrl: string;
+  channels: ProviderChannel[];
+}
 export type ProviderInput = Omit<ProviderPreset, "id">;
 
-/** An immutable, single-model request target, never a second stored API key. */
+/** An immutable request snapshot, never a second persisted API key. */
 export interface EndpointPreset {
   id: string;
   name: string;
@@ -28,15 +35,30 @@ export interface EndpointPreset {
   apiType: ApiType;
   temperature: number | null;
 }
-
 export interface ModelTarget extends EndpointPreset {
   providerId: string;
+  channelId: string;
+  channelName: string;
+  multiplier: string;
   modelId: string;
 }
 
-export const PRESET_STORAGE_KEY = "modeltrace.presets.v2";
+export const PRESET_STORAGE_KEY = "modeltrace.presets.v3";
+export const PREVIOUS_PRESET_STORAGE_KEY = "modeltrace.presets.v2";
 export const LEGACY_PRESET_STORAGE_KEY = "modeltrace.presets.v1";
-export const MAX_PROVIDER_MODELS = 50;
+export const DEFAULT_CHANNEL_ID = "default";
+export const MAX_PROVIDER_CHANNELS = 20;
+export const MAX_CHANNEL_MODELS = 50;
+
+export function normalizeMultiplier(value: unknown): string | null {
+  if (typeof value !== "string" && typeof value !== "number") return null;
+  const text = String(value).trim();
+  if (!/^\d{1,9}(?:\.\d{1,6})?$/.test(text)) return null;
+  const [integer, fraction = ""] = text.split(".");
+  const whole = integer!.replace(/^0+(?=\d)/, "");
+  const decimal = fraction.replace(/0+$/, "");
+  return decimal ? `${whole}.${decimal}` : whole;
+}
 
 export function presetLabel(preset: { name: string; baseUrl: string }): string {
   if (preset.name.trim()) return preset.name.trim();
@@ -46,49 +68,66 @@ export function presetLabel(preset: { name: string; baseUrl: string }): string {
     return preset.baseUrl;
   }
 }
-
-export function modelRunId(providerId: string, modelId: string): string {
-  // Tuple encoding prevents collisions even for imported, non-UUID identifiers.
-  return JSON.stringify([providerId, modelId]);
+export function targetLabel(target: ModelTarget): string {
+  return `${presetLabel(target)} · ${target.channelName} · ${target.model}`;
 }
-
-export function providerTargets(provider: ProviderPreset): ModelTarget[] {
-  return provider.models.map((model) => ({
-    id: modelRunId(provider.id, model.id),
+export function modelRunId(
+  providerId: string,
+  channelId: string,
+  modelId: string,
+): string {
+  return JSON.stringify([providerId, channelId, modelId]);
+}
+export function channelTargets(
+  provider: ProviderPreset,
+  channel: ProviderChannel,
+): ModelTarget[] {
+  return channel.models.map((model) => ({
+    id: modelRunId(provider.id, channel.id, model.id),
     providerId: provider.id,
+    channelId: channel.id,
+    channelName: channel.name,
+    multiplier: channel.multiplier,
     modelId: model.id,
     name: provider.name,
     baseUrl: provider.baseUrl,
-    apiKey: provider.apiKey,
+    apiKey: channel.apiKey,
     model: model.model,
     apiType: model.apiType,
     temperature: model.temperature,
   }));
 }
-
+export function providerTargets(provider: ProviderPreset): ModelTarget[] {
+  return provider.channels.flatMap((channel) =>
+    channelTargets(provider, channel),
+  );
+}
 export function parseModelIds(text: string): string[] {
   return [...new Set(text.split(/[\s,，;；]+/u).filter(Boolean))];
 }
-
 export function invalidatedModelRuns(
   before: ProviderPreset,
   after: ProviderInput,
 ): string[] {
-  const connectionChanged =
-    before.baseUrl !== after.baseUrl || before.apiKey !== after.apiKey;
-  const next = new Map(after.models.map((model) => [model.id, model]));
-  return before.models
-    .filter((model) => {
-      const updated = next.get(model.id);
+  const next = new Map(
+    providerTargets({ ...after, id: before.id }).map((target) => [
+      target.id,
+      target,
+    ]),
+  );
+  return providerTargets(before)
+    .filter((target) => {
+      const updated = next.get(target.id);
       return (
-        connectionChanged ||
         !updated ||
-        model.model !== updated.model ||
-        model.apiType !== updated.apiType ||
-        model.temperature !== updated.temperature
+        target.baseUrl !== updated.baseUrl ||
+        target.apiKey !== updated.apiKey ||
+        target.model !== updated.model ||
+        target.apiType !== updated.apiType ||
+        target.temperature !== updated.temperature
       );
     })
-    .map((model) => modelRunId(before.id, model.id));
+    .map((target) => target.id);
 }
 
 const nonempty = (value: unknown): value is string =>
@@ -98,15 +137,44 @@ const record = (value: unknown): value is Record<string, unknown> =>
 const temperature = (value: unknown): number | null =>
   typeof value === "number" && Number.isFinite(value) ? value : null;
 
-export function decodePresets(raw: string, version: 1 | 2): ProviderPreset[] {
+function decodeModels(source: unknown): ProviderModel[] {
+  if (!Array.isArray(source)) return [];
+  const ids = new Set<string>();
+  const names = new Set<string>();
+  const models: ProviderModel[] = [];
+  for (const entry of source) {
+    if (
+      !record(entry) ||
+      !nonempty(entry.id) ||
+      !nonempty(entry.model) ||
+      ids.has(entry.id) ||
+      names.has(entry.model.trim()) ||
+      (entry.apiType !== "chat" && entry.apiType !== "responses")
+    )
+      continue;
+    models.push({
+      id: entry.id,
+      model: entry.model.trim(),
+      apiType: entry.apiType,
+      temperature: temperature(entry.temperature),
+    });
+    ids.add(entry.id);
+    names.add(entry.model.trim());
+  }
+  return models;
+}
+
+export function decodePresets(
+  raw: string,
+  version: 1 | 2 | 3,
+): ProviderPreset[] {
   const payload: unknown = JSON.parse(raw);
   if (
     !record(payload) ||
     payload.version !== version ||
     !Array.isArray(payload.presets)
-  ) {
+  )
     throw new Error("不支持的服务商配置格式");
-  }
   const ids = new Set<string>();
   const presets: ProviderPreset[] = [];
   for (const item of payload.presets) {
@@ -115,68 +183,76 @@ export function decodePresets(raw: string, version: 1 | 2): ProviderPreset[] {
       !nonempty(item.id) ||
       ids.has(item.id) ||
       typeof item.name !== "string" ||
-      !nonempty(item.baseUrl) ||
-      !nonempty(item.apiKey)
+      !nonempty(item.baseUrl)
     )
       continue;
-    const source = version === 1 ? [{ ...item, id: item.id }] : item.models;
+    const source =
+      version === 3
+        ? item.channels
+        : [
+            {
+              id: DEFAULT_CHANNEL_ID,
+              name: "默认渠道",
+              multiplier: "1",
+              apiKey: item.apiKey,
+              models: version === 1 ? [{ ...item, id: item.id }] : item.models,
+            },
+          ];
     if (!Array.isArray(source)) continue;
-    const modelIds = new Set<string>();
-    const modelNames = new Set<string>();
-    const models: ProviderModel[] = [];
+    const channelIds = new Set<string>();
+    const channels: ProviderChannel[] = [];
     for (const entry of source) {
       if (
         !record(entry) ||
         !nonempty(entry.id) ||
-        !nonempty(entry.model) ||
-        modelIds.has(entry.id) ||
-        modelNames.has(entry.model.trim()) ||
-        (entry.apiType !== "chat" && entry.apiType !== "responses")
+        channelIds.has(entry.id) ||
+        !nonempty(entry.name) ||
+        !nonempty(entry.apiKey)
       )
         continue;
-      models.push({
+      const multiplier = normalizeMultiplier(entry.multiplier);
+      const models = decodeModels(entry.models);
+      if (multiplier === null || !models.length) continue;
+      channels.push({
         id: entry.id,
-        model: entry.model.trim(),
-        apiType: entry.apiType,
-        temperature: temperature(entry.temperature),
+        name: entry.name.trim(),
+        multiplier,
+        apiKey: entry.apiKey.trim(),
+        models,
       });
-      modelIds.add(entry.id);
-      modelNames.add(entry.model.trim());
+      channelIds.add(entry.id);
     }
-    if (!models.length) continue;
+    if (!channels.length) continue;
     presets.push({
       id: item.id,
       name: presetLabel({ name: item.name, baseUrl: item.baseUrl }),
       baseUrl: item.baseUrl.trim().replace(/\/+$/, ""),
-      apiKey: item.apiKey.trim(),
-      models,
+      channels,
     });
     ids.add(item.id);
   }
   return presets;
 }
-
 export function encodePresets(presets: ProviderPreset[]): string {
-  return JSON.stringify({ version: 2, presets });
+  return JSON.stringify({ version: 3, presets });
 }
-
 export function loadPresets(
   storage: Pick<Storage, "getItem" | "setItem" | "removeItem">,
-): {
-  presets: ProviderPreset[];
-  error: string | null;
-} {
+): { presets: ProviderPreset[]; error: string | null } {
   let presets: ProviderPreset[] = [];
   try {
     const current = storage.getItem(PRESET_STORAGE_KEY);
-    // An empty v2 collection is intentional: never resurrect deleted v1 presets.
+    // An explicitly empty collection is authoritative at every schema version.
     if (current !== null)
-      return { presets: decodePresets(current, 2), error: null };
-    const legacy = storage.getItem(LEGACY_PRESET_STORAGE_KEY);
-    if (legacy === null) return { presets, error: null };
-    presets = decodePresets(legacy, 1);
+      return { presets: decodePresets(current, 3), error: null };
+    const previous = storage.getItem(PREVIOUS_PRESET_STORAGE_KEY);
+    const legacy =
+      previous === null ? storage.getItem(LEGACY_PRESET_STORAGE_KEY) : null;
+    if (previous === null && legacy === null) return { presets, error: null };
+    presets = decodePresets((previous ?? legacy)!, previous !== null ? 2 : 1);
     storage.setItem(PRESET_STORAGE_KEY, encodePresets(presets));
-    // Remove the duplicate plaintext keys only after the migration is durable.
+    // Only remove duplicate plaintext credentials after the new write succeeds.
+    storage.removeItem(PREVIOUS_PRESET_STORAGE_KEY);
     storage.removeItem(LEGACY_PRESET_STORAGE_KEY);
     return { presets, error: null };
   } catch {
