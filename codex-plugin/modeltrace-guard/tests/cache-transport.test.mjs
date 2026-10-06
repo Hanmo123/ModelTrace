@@ -85,13 +85,22 @@ test('only authorized disposable threads can send model requests; originals and 
   for (const [url, headers, method] of [
     [f.relay.url + '/responses', { ...f.headers, 'thread-id': f.sourceId }, 'POST'],
     [f.relay.url + '/responses', { ...f.headers, 'thread-id': randomUUID() }, 'POST'],
-    [f.relay.url + '/responses', { ...f.headers, 'session-id': randomUUID() }, 'POST'],
+    [f.relay.url + '/responses', { ...f.headers, 'session-id': 'not-a-uuid' }, 'POST'],
     [f.relay.url + '/responses', { 'thread-id': f.childId, 'session-id': f.childId }, 'POST'],
     [f.relay.url + '/responses', f.headers, 'GET'],
     [f.relay.url + '/arbitrary', f.headers, 'POST'],
     [new URL('/wrong/responses', f.relay.url).href, f.headers, 'POST'],
   ]) assert.equal((await request(url, { method, headers, ...(method === 'POST' ? { body: 'not forwarded' } : {}) })).status, 404);
   assert.equal(f.received.length, 0);
+});
+
+test('accepts the per-connection session-id UUID sent by newer Codex builds', async t => {
+  const f = await fixture(t, (req, res) => res.end('ok'));
+  const result = await request(f.relay.url + '/responses', { method: 'POST', headers: { ...f.headers, 'session-id': randomUUID() }, body: 'not forwarded' });
+  assert.equal(result.status, 200);
+  assert.equal(f.received.length, 1);
+  assert.equal(f.received[0].headers['session-id'], f.sessionId);
+  assert.equal(f.received[0].headers['thread-id'], f.childId);
 });
 
 test('model catalogue reads retain native query parameters and do not inject thread headers', async t => {

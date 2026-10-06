@@ -25,7 +25,11 @@ export async function startSessionCacheTransport({ sessionId, baseId, sourceId, 
     else {
       if (req.method !== (upgrade ? 'GET' : 'POST')) return null;
       const id = req.headers['thread-id'];
-      if (!allowed.has(id) || !req.headers.authorization || ![id, sessionId].includes(req.headers['session-id'])) return null;
+      // Newer Codex builds (0.157+) send their own per-connection UUID as session-id
+      // instead of the thread or cache-session ids used by earlier clients. Authorization
+      // stays anchored on the disposable thread id below, and the upstream leg rewrites
+      // session-id to the source cache session either way.
+      if (!allowed.has(id) || !req.headers.authorization || !UUID.test(req.headers['session-id'])) return null;
     }
     const url = new URL(relative, destination);
     const headers = { ...req.headers, host: url.host };
