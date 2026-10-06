@@ -4,6 +4,7 @@ import http from "node:http";
 import { spawn } from "node:child_process";
 import assert from "node:assert/strict";
 import { fileURLToPath } from "node:url";
+import { useLowConfidenceBank } from "./browser-bank-fixture.mjs";
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 const numbers = Array.from(
   { length: 310 },
@@ -123,6 +124,7 @@ try {
     args: ["--no-sandbox"],
   });
   let page = await browser.newPage();
+  await useLowConfidenceBank(page);
   await page.goto("http://127.0.0.1:3245", { waitUntil: "networkidle0" });
   const click = async (text) => {
     const node = await page.evaluateHandle(
@@ -305,6 +307,7 @@ try {
   await page.close();
   const context = await browser.createBrowserContext();
   page = await context.newPage();
+  await useLowConfidenceBank(page);
   await page.setViewport({ width: 1500, height: 950 });
   const baseURL = `http://127.0.0.1:${target.address().port}/v1`;
   await page.evaluateOnNewDocument((baseUrl) => {

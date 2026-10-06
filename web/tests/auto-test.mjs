@@ -5,6 +5,7 @@ import http from "node:http";
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import assert from "node:assert/strict";
+import { useLowConfidenceBank } from "./browser-bank-fixture.mjs";
 
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 const calls = [];
@@ -116,6 +117,7 @@ try {
     args: ["--no-sandbox"],
   });
   const page = await browser.newPage();
+  await useLowConfidenceBank(page);
   await page.setViewport({ width: 1500, height: 950 });
   const errors = [];
   page.on("pageerror", (error) => errors.push(String(error)));
