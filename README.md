@@ -196,9 +196,15 @@ web/                Nuxt 4 纯前端新版界面（SPA + Tailwind + shadcn-vue�
   tests/            本地 mock 与浏览器回归测试
 ```
 
+## 录入新模型指纹的 Skill
+
+项目内提供 [enroll-model-fingerprint](.agents/skills/enroll-model-fingerprint/SKILL.md)，包含采集、断点续采、质量校验、家族注册、交叉验证和各端指纹库同步流程，附带采集与重建脚本。
+
+支持 Agent Skills 的工具可从 `.agents/skills/` 发现它。在 Pi 中执行 `/reload` 后，可用 `/skill:enroll-model-fingerprint` 调用，或直接要求录入新模型并提供接口、模型 ID 和凭据。密钥通过环境变量或标准输入传给采集脚本，不写入 skill 或仓库。
+
 ## 指纹库说明
 
-项目中现有指纹库共包含两个模型家族、17 个模型：
+项目中现有指纹库共包含四个模型家族、19 个模型：
 
 ```
 gpt-5.4
@@ -218,9 +224,13 @@ claude-opus-4-7
 claude-opus-4-8
 claude-opus-5
 claude-opus-5-5
+deepseek-v4.1-flash
+kimi-k3
 ```
 
 GPT 采集自官方订阅 Codex，Claude 采集自 [OAIPro](https://api.oaipro.com/)。
+
+DeepSeek 和 Kimi 通过兼容 OpenAI 的 API 采集，均使用服务商默认采样参数，各收集 12 种环境下的 36 条有效回答。调用模型 ID 分别为 `deepseek-v4.1-flash::only=DeepSeek,nofallback` 和 `kimi-k3::only=Moonshot AI,nofallback`。公开数据已移除私有接入地址和渠道标识。
 
 ## 声明
 

@@ -1,9 +1,9 @@
 name: ModelTrace Guard tests
 on:
   push:
-    paths: ['codex-plugin/**', '.agents/plugins/marketplace.json', 'static/fingerprint-core.js', 'static/styles.css', 'data/gpt_reference.jsonl', 'data/claude_reference.jsonl', 'data/unified_bank.json', '.github/workflows/plugin-tests.yml']
+    paths: ['codex-plugin/**', '.agents/plugins/marketplace.json', 'static/fingerprint-core.js', 'static/styles.css', 'data/gpt_reference.jsonl', 'data/claude_reference.jsonl', 'data/deepseek_reference.jsonl', 'data/kimi_reference.jsonl', 'data/unified_bank.json', '.github/workflows/plugin-tests.yml']
   pull_request:
-    paths: ['codex-plugin/**', '.agents/plugins/marketplace.json', 'static/fingerprint-core.js', 'static/styles.css', 'data/gpt_reference.jsonl', 'data/claude_reference.jsonl', 'data/unified_bank.json', '.github/workflows/plugin-tests.yml']
+    paths: ['codex-plugin/**', '.agents/plugins/marketplace.json', 'static/fingerprint-core.js', 'static/styles.css', 'data/gpt_reference.jsonl', 'data/claude_reference.jsonl', 'data/deepseek_reference.jsonl', 'data/kimi_reference.jsonl', 'data/unified_bank.json', '.github/workflows/plugin-tests.yml']
 permissions:
   contents: read
 jobs:

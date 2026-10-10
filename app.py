@@ -32,6 +32,16 @@ def builtin_configs() -> dict[str, dict]:
             "bank_file": PROJECT / "data" / "claude_bank.json",
             "data_file": PROJECT / "data" / "claude_reference.jsonl",
         },
+        "deepseek": {
+            "label": "DeepSeek",
+            "bank_file": PROJECT / "data" / "deepseek_bank.json",
+            "data_file": PROJECT / "data" / "deepseek_reference.jsonl",
+        },
+        "kimi": {
+            "label": "Kimi",
+            "bank_file": PROJECT / "data" / "kimi_bank.json",
+            "data_file": PROJECT / "data" / "kimi_reference.jsonl",
+        },
     }
 
 

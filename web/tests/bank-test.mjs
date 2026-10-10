@@ -15,9 +15,15 @@ const paths = [
 const copies = await Promise.all(paths.map(path => readFile(new URL(path, root))));
 const bank = JSON.parse(copies[0]);
 const provenance = JSON.parse(await readFile(new URL("codex-plugin/modeltrace-guard/assets/provenance.json", root), "utf8"));
-const references = (await readFile(new URL("data/claude_reference.jsonl", root), "utf8"))
-  .trim().split("\n").map(line => JSON.parse(line));
-const newModel = bank.models.find(model => model.id === "claude-sonnet-5-5");
+const enrolledModels = await Promise.all([
+  { id: "claude-sonnet-5-5", family: "claude" },
+  { id: "deepseek-v4.1-flash", family: "deepseek" },
+  { id: "kimi-k3", family: "kimi" },
+].map(async model => ({
+  ...model,
+  references: (await readFile(new URL(`data/${model.family}_reference.jsonl`, root), "utf8"))
+    .trim().split("\n").map(line => JSON.parse(line)),
+})));
 
 function assertVector(vector, length) {
   assert.equal(vector.length, length);
@@ -33,12 +39,18 @@ test("Python, legacy page, Nuxt/TUI and Guard ship byte-identical banks", () => 
   assert.equal(bank.built_at, provenance.bankBuiltAt);
 });
 
-test("upstream Sonnet 5.5 samples and model order are included", () => {
-  assert(newModel, "Missing upstream claude-sonnet-5-5 fingerprints");
-  const samples = references.filter(row => row.model_id === newModel.id);
-  assert.equal(samples.length, 36);
-  assert.equal(newModel.response_count, samples.length);
-  assert(samples.every(row => row.strict_valid && row.text));
+test("enrolled model samples and model order are included", () => {
+  for (const { id, family, references } of enrolledModels) {
+    const model = bank.models.find(model => model.id === id);
+    assert(model, `Missing ${id} fingerprints`);
+    const samples = references.filter(row => row.model_id === id);
+    assert.equal(samples.length, 36);
+    assert.equal(model.response_count, samples.length);
+    assert.equal(model.family, family);
+    assert(samples.every(row => row.strict_valid && row.text));
+    assert.equal(Object.keys(model.conditions).length, 12);
+    assert(Object.values(model.conditions).every(count => count === 3));
+  }
   assert.equal(new Set(bank.models.map(model => model.id)).size, bank.models.length);
   assert.deepEqual(bank.robust.model_order, bank.models.map(model => model.id));
 });
@@ -66,14 +78,17 @@ test("all refitted centroids, environments and calibration match the model count
   }
 });
 
-test("browser attribution recognizes the added upstream model", async () => {
+test("browser attribution recognizes the enrolled models", async () => {
   const output = await build({entryPoints: ["app/lib/fingerprint.ts"], bundle: true, write: false, platform: "node", format: "esm"});
   const { analyzeGlobalOutputs } = await import(`data:text/javascript;base64,${Buffer.from(output.outputFiles[0].contents).toString("base64")}`);
-  const samples = references.filter(row => row.model_id === "claude-sonnet-5-5").slice(0, 3);
-  const result = analyzeGlobalOutputs(samples.map(row => ({text: row.text, expected_count: row.requested_count})), bank);
-  assert.equal(result.prediction, "claude-sonnet-5-5");
-  assert.equal(result.used_outputs, 3);
-  assert.equal(result.results.length, bank.models.length);
-  assert(result.results.every(model => Number.isFinite(model.probability)));
-  assert(Math.abs(result.results.reduce((sum, model) => sum + model.probability, 0) - 1) < 1e-12);
+  for (const { id, family, references } of enrolledModels) {
+    const samples = references.filter(row => row.model_id === id).slice(0, 3);
+    const result = analyzeGlobalOutputs(samples.map(row => ({text: row.text, expected_count: row.requested_count})), bank);
+    assert.equal(result.prediction, id);
+    assert.equal(result.family_prediction, family);
+    assert.equal(result.used_outputs, 3);
+    assert.equal(result.results.length, bank.models.length);
+    assert(result.results.every(model => Number.isFinite(model.probability)));
+    assert(Math.abs(result.results.reduce((sum, model) => sum + model.probability, 0) - 1) < 1e-12);
+  }
 });

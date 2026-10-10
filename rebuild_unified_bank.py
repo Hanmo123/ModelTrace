@@ -11,6 +11,8 @@ OUTPUT = PROJECT / "data" / "unified_bank.json"
 SOURCES = {
     "gpt": ("GPT", PROJECT / "data" / "gpt_reference.jsonl"),
     "claude": ("Claude", PROJECT / "data" / "claude_reference.jsonl"),
+    "deepseek": ("DeepSeek", PROJECT / "data" / "deepseek_reference.jsonl"),
+    "kimi": ("Kimi", PROJECT / "data" / "kimi_reference.jsonl"),
 }
 
 
