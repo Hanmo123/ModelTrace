@@ -22,6 +22,7 @@ const boundedModels = [
   { id: 'gpt-6-luna', family: 'gpt', provider: 'codex', reasoningEffort: 'low', cliVersion: '0.155.1' },
   { id: 'claude-opus-5-5', family: 'claude', provider: 'oaipro', responseModel: 'claude-opus-5-5', cleanRawNumbers: true },
   { id: 'deepseek-v4.1-flash', family: 'deepseek', provider: 'api', apiModel: 'deepseek-v4.1-flash::only=DeepSeek,nofallback', cleanRawNumbers: true, redactedSource: true },
+  { id: 'deepseek-v4.1-flash-1017', family: 'deepseek', provider: 'api', apiModel: 'deepseek-flash', responseModel: 'deepseek-flash', cleanRawNumbers: true, redactedSource: true },
   { id: 'kimi-k3', family: 'kimi', provider: 'api', apiModel: 'kimi-k3::only=Moonshot AI,nofallback', cleanRawNumbers: true, redactedSource: true },
 ];
 

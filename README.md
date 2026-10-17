@@ -204,7 +204,7 @@ web/                Nuxt 4 纯前端新版界面（SPA + Tailwind + shadcn-vue�
 
 ## 指纹库说明
 
-项目中现有指纹库共包含四个模型家族、19 个模型：
+项目中现有指纹库共包含四个模型家族、20 个模型：
 
 ```
 gpt-5.4
@@ -225,12 +225,15 @@ claude-opus-4-8
 claude-opus-5
 claude-opus-5-5
 deepseek-v4.1-flash
+deepseek-v4.1-flash-1017
 kimi-k3
 ```
 
 GPT 采集自官方订阅 Codex，Claude 采集自 [OAIPro](https://api.oaipro.com/)。
 
 DeepSeek 和 Kimi 通过兼容 OpenAI 的 API 采集，均使用服务商默认采样参数，各收集 12 种环境下的 36 条有效回答。调用模型 ID 分别为 `deepseek-v4.1-flash::only=DeepSeek,nofallback` 和 `kimi-k3::only=Moonshot AI,nofallback`。公开数据已移除私有接入地址和渠道标识。
+
+`deepseek-v4.1-flash-1017` 采集自 DeepSeek 官方兼容 OpenAI 的 API，服务商公布的模型名为 `deepseek-flash`（模型卡片写作 DeepSeek-V4.1-Flash），代号 `deepseek-v4.1-flash-1017`。同样使用默认采样参数，覆盖 12 种环境下的 36 条有效回答，公开数据已移除接入地址。
 
 ## 声明
 

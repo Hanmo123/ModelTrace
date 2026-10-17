@@ -18,6 +18,7 @@ const provenance = JSON.parse(await readFile(new URL("codex-plugin/modeltrace-gu
 const enrolledModels = await Promise.all([
   { id: "claude-sonnet-5-5", family: "claude" },
   { id: "deepseek-v4.1-flash", family: "deepseek" },
+  { id: "deepseek-v4.1-flash-1017", family: "deepseek" },
   { id: "kimi-k3", family: "kimi" },
 ].map(async model => ({
   ...model,
